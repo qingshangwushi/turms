@@ -17,39 +17,69 @@
 
 package im.turms.server.common.access.client.dto.model.user;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
+import com.google.protobuf.AbstractMessageLite;
+import com.google.protobuf.AbstractParser;
+import com.google.protobuf.ByteString;
+import com.google.protobuf.CodedInputStream;
+import com.google.protobuf.CodedOutputStream;
+import com.google.protobuf.Descriptors;
+import com.google.protobuf.ExtensionRegistryLite;
+import com.google.protobuf.GeneratedMessage;
+import com.google.protobuf.Internal;
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.protobuf.MapEntry;
+import com.google.protobuf.MapField;
+import com.google.protobuf.MapFieldReflectionAccessor;
+import com.google.protobuf.Message;
+import com.google.protobuf.Parser;
+import com.google.protobuf.RepeatedFieldBuilder;
+import com.google.protobuf.RuntimeVersion;
+import com.google.protobuf.UninitializedMessageException;
+import com.google.protobuf.WireFormat;
+
+import im.turms.server.common.access.client.dto.model.common.Value;
+import im.turms.server.common.access.client.dto.model.common.ValueOrBuilder;
+
 /**
  * Protobuf type {@code im.turms.proto.UserLocation}
  */
-public final class UserLocation extends com.google.protobuf.GeneratedMessage implements
+public final class UserLocation extends GeneratedMessage implements
         // @@protoc_insertion_point(message_implements:im.turms.proto.UserLocation)
         UserLocationOrBuilder {
     private static final long serialVersionUID = 0L;
     static {
-        com.google.protobuf.RuntimeVersion.validateProtobufGencodeVersion(
-                com.google.protobuf.RuntimeVersion.RuntimeDomain.PUBLIC,
+        RuntimeVersion.validateProtobufGencodeVersion(RuntimeVersion.RuntimeDomain.PUBLIC,
                 /* major= */ 4,
-                /* minor= */ 27,
-                /* patch= */ 0,
+                /* minor= */ 29,
+                /* patch= */ 1,
                 /* suffix= */ "",
                 UserLocation.class.getName());
     }
 
     // Use UserLocation.newBuilder() to construct.
-    private UserLocation(com.google.protobuf.GeneratedMessage.Builder<?> builder) {
+    private UserLocation(GeneratedMessage.Builder<?> builder) {
         super(builder);
     }
 
     private UserLocation() {
+        customAttributes_ = Collections.emptyList();
     }
 
-    public static com.google.protobuf.Descriptors.Descriptor getDescriptor() {
-        return im.turms.server.common.access.client.dto.model.user.UserLocationOuterClass.internal_static_im_turms_proto_UserLocation_descriptor;
+    public static Descriptors.Descriptor getDescriptor() {
+        return UserLocationOuterClass.internal_static_im_turms_proto_UserLocation_descriptor;
     }
 
     @SuppressWarnings({"rawtypes"})
-    @java.lang.Override
-    protected com.google.protobuf.MapFieldReflectionAccessor internalGetMapFieldReflection(
-            int number) {
+    @Override
+    protected MapFieldReflectionAccessor internalGetMapFieldReflection(int number) {
         if (number == 4) {
             return internalGetDetails();
         }
@@ -58,12 +88,10 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
                         + number);
     }
 
-    @java.lang.Override
-    protected com.google.protobuf.GeneratedMessage.FieldAccessorTable internalGetFieldAccessorTable() {
-        return im.turms.server.common.access.client.dto.model.user.UserLocationOuterClass.internal_static_im_turms_proto_UserLocation_fieldAccessorTable
-                .ensureFieldAccessorsInitialized(
-                        im.turms.server.common.access.client.dto.model.user.UserLocation.class,
-                        im.turms.server.common.access.client.dto.model.user.UserLocation.Builder.class);
+    @Override
+    protected GeneratedMessage.FieldAccessorTable internalGetFieldAccessorTable() {
+        return UserLocationOuterClass.internal_static_im_turms_proto_UserLocation_fieldAccessorTable
+                .ensureFieldAccessorsInitialized(UserLocation.class, UserLocation.Builder.class);
     }
 
     private int bitField0_;
@@ -75,7 +103,7 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
      *
      * @return The latitude.
      */
-    @java.lang.Override
+    @Override
     public float getLatitude() {
         return latitude_;
     }
@@ -88,7 +116,7 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
      *
      * @return The longitude.
      */
-    @java.lang.Override
+    @Override
     public float getLongitude() {
         return longitude_;
     }
@@ -101,7 +129,7 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
      *
      * @return Whether the timestamp field is set.
      */
-    @java.lang.Override
+    @Override
     public boolean hasTimestamp() {
         return ((bitField0_ & 0x00000001) != 0);
     }
@@ -111,7 +139,7 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
      *
      * @return The timestamp.
      */
-    @java.lang.Override
+    @Override
     public long getTimestamp() {
         return timestamp_;
     }
@@ -119,22 +147,20 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
     public static final int DETAILS_FIELD_NUMBER = 4;
 
     private static final class DetailsDefaultEntryHolder {
-        static final com.google.protobuf.MapEntry<java.lang.String, java.lang.String> defaultEntry =
-                com.google.protobuf.MapEntry.newDefaultInstance(
-                        im.turms.server.common.access.client.dto.model.user.UserLocationOuterClass.internal_static_im_turms_proto_UserLocation_DetailsEntry_descriptor,
-                        com.google.protobuf.WireFormat.FieldType.STRING,
-                        "",
-                        com.google.protobuf.WireFormat.FieldType.STRING,
-                        "");
+        static final MapEntry<String, String> defaultEntry = MapEntry.newDefaultInstance(
+                UserLocationOuterClass.internal_static_im_turms_proto_UserLocation_DetailsEntry_descriptor,
+                WireFormat.FieldType.STRING,
+                "",
+                WireFormat.FieldType.STRING,
+                "");
     }
 
     @SuppressWarnings("serial")
-    private com.google.protobuf.MapField<java.lang.String, java.lang.String> details_;
+    private MapField<String, String> details_;
 
-    private com.google.protobuf.MapField<java.lang.String, java.lang.String> internalGetDetails() {
+    private MapField<String, String> internalGetDetails() {
         if (details_ == null) {
-            return com.google.protobuf.MapField
-                    .emptyMapField(DetailsDefaultEntryHolder.defaultEntry);
+            return MapField.emptyMapField(DetailsDefaultEntryHolder.defaultEntry);
         }
         return details_;
     }
@@ -151,8 +177,8 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
      *
      * <code>map&lt;string, string&gt; details = 4;</code>
      */
-    @java.lang.Override
-    public boolean containsDetails(java.lang.String key) {
+    @Override
+    public boolean containsDetails(String key) {
         if (key == null) {
             throw new NullPointerException("map key");
         }
@@ -163,9 +189,9 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
     /**
      * Use {@link #getDetailsMap()} instead.
      */
-    @java.lang.Override
-    @java.lang.Deprecated
-    public java.util.Map<java.lang.String, java.lang.String> getDetails() {
+    @Override
+    @Deprecated
+    public Map<String, String> getDetails() {
         return getDetailsMap();
     }
 
@@ -176,8 +202,8 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
      *
      * <code>map&lt;string, string&gt; details = 4;</code>
      */
-    @java.lang.Override
-    public java.util.Map<java.lang.String, java.lang.String> getDetailsMap() {
+    @Override
+    public Map<String, String> getDetailsMap() {
         return internalGetDetails().getMap();
     }
 
@@ -188,16 +214,16 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
      *
      * <code>map&lt;string, string&gt; details = 4;</code>
      */
-    @java.lang.Override
+    @Override
     public /* nullable */
-    java.lang.String getDetailsOrDefault(
-            java.lang.String key,
+    String getDetailsOrDefault(
+            String key,
             /* nullable */
-            java.lang.String defaultValue) {
+            String defaultValue) {
         if (key == null) {
             throw new NullPointerException("map key");
         }
-        java.util.Map<java.lang.String, java.lang.String> map = internalGetDetails().getMap();
+        Map<String, String> map = internalGetDetails().getMap();
         return map.getOrDefault(key, defaultValue);
     }
 
@@ -208,21 +234,65 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
      *
      * <code>map&lt;string, string&gt; details = 4;</code>
      */
-    @java.lang.Override
-    public java.lang.String getDetailsOrThrow(java.lang.String key) {
+    @Override
+    public String getDetailsOrThrow(String key) {
         if (key == null) {
             throw new NullPointerException("map key");
         }
-        java.util.Map<java.lang.String, java.lang.String> map = internalGetDetails().getMap();
+        Map<String, String> map = internalGetDetails().getMap();
         if (!map.containsKey(key)) {
-            throw new java.lang.IllegalArgumentException();
+            throw new IllegalArgumentException();
         }
         return map.get(key);
     }
 
+    public static final int CUSTOM_ATTRIBUTES_FIELD_NUMBER = 15;
+    @SuppressWarnings("serial")
+    private List<Value> customAttributes_;
+
+    /**
+     * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+     */
+    @Override
+    public List<Value> getCustomAttributesList() {
+        return customAttributes_;
+    }
+
+    /**
+     * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+     */
+    @Override
+    public List<? extends ValueOrBuilder> getCustomAttributesOrBuilderList() {
+        return customAttributes_;
+    }
+
+    /**
+     * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+     */
+    @Override
+    public int getCustomAttributesCount() {
+        return customAttributes_.size();
+    }
+
+    /**
+     * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+     */
+    @Override
+    public Value getCustomAttributes(int index) {
+        return customAttributes_.get(index);
+    }
+
+    /**
+     * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+     */
+    @Override
+    public ValueOrBuilder getCustomAttributesOrBuilder(int index) {
+        return customAttributes_.get(index);
+    }
+
     private byte memoizedIsInitialized = -1;
 
-    @java.lang.Override
+    @Override
     public boolean isInitialized() {
         byte isInitialized = memoizedIsInitialized;
         if (isInitialized == 1) {
@@ -236,25 +306,28 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
         return true;
     }
 
-    @java.lang.Override
-    public void writeTo(com.google.protobuf.CodedOutputStream output) throws java.io.IOException {
-        if (java.lang.Float.floatToRawIntBits(latitude_) != 0) {
+    @Override
+    public void writeTo(CodedOutputStream output) throws IOException {
+        if (Float.floatToRawIntBits(latitude_) != 0) {
             output.writeFloat(1, latitude_);
         }
-        if (java.lang.Float.floatToRawIntBits(longitude_) != 0) {
+        if (Float.floatToRawIntBits(longitude_) != 0) {
             output.writeFloat(2, longitude_);
         }
         if (((bitField0_ & 0x00000001) != 0)) {
             output.writeInt64(3, timestamp_);
         }
-        com.google.protobuf.GeneratedMessage.serializeStringMapTo(output,
+        GeneratedMessage.serializeStringMapTo(output,
                 internalGetDetails(),
                 DetailsDefaultEntryHolder.defaultEntry,
                 4);
+        for (Value value : customAttributes_) {
+            output.writeMessage(15, value);
+        }
         getUnknownFields().writeTo(output);
     }
 
-    @java.lang.Override
+    @Override
     public int getSerializedSize() {
         int size = memoizedSize;
         if (size != -1) {
@@ -262,32 +335,34 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
         }
 
         size = 0;
-        if (java.lang.Float.floatToRawIntBits(latitude_) != 0) {
-            size += com.google.protobuf.CodedOutputStream.computeFloatSize(1, latitude_);
+        if (Float.floatToRawIntBits(latitude_) != 0) {
+            size += CodedOutputStream.computeFloatSize(1, latitude_);
         }
-        if (java.lang.Float.floatToRawIntBits(longitude_) != 0) {
-            size += com.google.protobuf.CodedOutputStream.computeFloatSize(2, longitude_);
+        if (Float.floatToRawIntBits(longitude_) != 0) {
+            size += CodedOutputStream.computeFloatSize(2, longitude_);
         }
         if (((bitField0_ & 0x00000001) != 0)) {
-            size += com.google.protobuf.CodedOutputStream.computeInt64Size(3, timestamp_);
+            size += CodedOutputStream.computeInt64Size(3, timestamp_);
         }
-        for (java.util.Map.Entry<java.lang.String, java.lang.String> entry : internalGetDetails()
-                .getMap()
+        for (Map.Entry<String, String> entry : internalGetDetails().getMap()
                 .entrySet()) {
-            com.google.protobuf.MapEntry<java.lang.String, java.lang.String> details__ =
+            MapEntry<String, String> details__ =
                     DetailsDefaultEntryHolder.defaultEntry.newBuilderForType()
                             .setKey(entry.getKey())
                             .setValue(entry.getValue())
                             .build();
-            size += com.google.protobuf.CodedOutputStream.computeMessageSize(4, details__);
+            size += CodedOutputStream.computeMessageSize(4, details__);
+        }
+        for (Value value : customAttributes_) {
+            size += CodedOutputStream.computeMessageSize(15, value);
         }
         size += getUnknownFields().getSerializedSize();
         memoizedSize = size;
         return size;
     }
 
-    @java.lang.Override
-    public boolean equals(final java.lang.Object obj) {
+    @Override
+    public boolean equals(final Object obj) {
         if (obj == this) {
             return true;
         }
@@ -295,12 +370,10 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
             return super.equals(obj);
         }
 
-        if (java.lang.Float.floatToIntBits(getLatitude()) != java.lang.Float
-                .floatToIntBits(other.getLatitude())) {
+        if (Float.floatToIntBits(getLatitude()) != Float.floatToIntBits(other.getLatitude())) {
             return false;
         }
-        if (java.lang.Float.floatToIntBits(getLongitude()) != java.lang.Float
-                .floatToIntBits(other.getLongitude())) {
+        if (Float.floatToIntBits(getLongitude()) != Float.floatToIntBits(other.getLongitude())) {
             return false;
         }
         if (hasTimestamp() != other.hasTimestamp()) {
@@ -312,10 +385,11 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
             }
         }
         return internalGetDetails().equals(other.internalGetDetails())
+                && getCustomAttributesList().equals(other.getCustomAttributesList())
                 && getUnknownFields().equals(other.getUnknownFields());
     }
 
-    @java.lang.Override
+    @Override
     public int hashCode() {
         if (memoizedHashCode != 0) {
             return memoizedHashCode;
@@ -323,100 +397,84 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
         int hash = 41;
         hash = (19 * hash) + getDescriptor().hashCode();
         hash = (37 * hash) + LATITUDE_FIELD_NUMBER;
-        hash = (53 * hash) + java.lang.Float.floatToIntBits(getLatitude());
+        hash = (53 * hash) + Float.floatToIntBits(getLatitude());
         hash = (37 * hash) + LONGITUDE_FIELD_NUMBER;
-        hash = (53 * hash) + java.lang.Float.floatToIntBits(getLongitude());
+        hash = (53 * hash) + Float.floatToIntBits(getLongitude());
         if (hasTimestamp()) {
             hash = (37 * hash) + TIMESTAMP_FIELD_NUMBER;
-            hash = (53 * hash) + com.google.protobuf.Internal.hashLong(getTimestamp());
+            hash = (53 * hash) + Internal.hashLong(getTimestamp());
         }
         if (!internalGetDetails().getMap()
                 .isEmpty()) {
             hash = (37 * hash) + DETAILS_FIELD_NUMBER;
             hash = (53 * hash) + internalGetDetails().hashCode();
         }
+        if (getCustomAttributesCount() > 0) {
+            hash = (37 * hash) + CUSTOM_ATTRIBUTES_FIELD_NUMBER;
+            hash = (53 * hash) + getCustomAttributesList().hashCode();
+        }
         hash = (29 * hash) + getUnknownFields().hashCode();
         memoizedHashCode = hash;
         return hash;
     }
 
-    public static im.turms.server.common.access.client.dto.model.user.UserLocation parseFrom(
-            java.nio.ByteBuffer data) throws com.google.protobuf.InvalidProtocolBufferException {
+    public static UserLocation parseFrom(ByteBuffer data) throws InvalidProtocolBufferException {
         return PARSER.parseFrom(data);
     }
 
-    public static im.turms.server.common.access.client.dto.model.user.UserLocation parseFrom(
-            java.nio.ByteBuffer data,
-            com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-            throws com.google.protobuf.InvalidProtocolBufferException {
+    public static UserLocation parseFrom(ByteBuffer data, ExtensionRegistryLite extensionRegistry)
+            throws InvalidProtocolBufferException {
         return PARSER.parseFrom(data, extensionRegistry);
     }
 
-    public static im.turms.server.common.access.client.dto.model.user.UserLocation parseFrom(
-            com.google.protobuf.ByteString data)
-            throws com.google.protobuf.InvalidProtocolBufferException {
+    public static UserLocation parseFrom(ByteString data) throws InvalidProtocolBufferException {
         return PARSER.parseFrom(data);
     }
 
-    public static im.turms.server.common.access.client.dto.model.user.UserLocation parseFrom(
-            com.google.protobuf.ByteString data,
-            com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-            throws com.google.protobuf.InvalidProtocolBufferException {
+    public static UserLocation parseFrom(ByteString data, ExtensionRegistryLite extensionRegistry)
+            throws InvalidProtocolBufferException {
         return PARSER.parseFrom(data, extensionRegistry);
     }
 
-    public static im.turms.server.common.access.client.dto.model.user.UserLocation parseFrom(
-            byte[] data) throws com.google.protobuf.InvalidProtocolBufferException {
+    public static UserLocation parseFrom(byte[] data) throws InvalidProtocolBufferException {
         return PARSER.parseFrom(data);
     }
 
-    public static im.turms.server.common.access.client.dto.model.user.UserLocation parseFrom(
-            byte[] data,
-            com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-            throws com.google.protobuf.InvalidProtocolBufferException {
+    public static UserLocation parseFrom(byte[] data, ExtensionRegistryLite extensionRegistry)
+            throws InvalidProtocolBufferException {
         return PARSER.parseFrom(data, extensionRegistry);
     }
 
-    public static im.turms.server.common.access.client.dto.model.user.UserLocation parseFrom(
-            java.io.InputStream input) throws java.io.IOException {
-        return com.google.protobuf.GeneratedMessage.parseWithIOException(PARSER, input);
+    public static UserLocation parseFrom(InputStream input) throws IOException {
+        return GeneratedMessage.parseWithIOException(PARSER, input);
     }
 
-    public static im.turms.server.common.access.client.dto.model.user.UserLocation parseFrom(
-            java.io.InputStream input,
-            com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-            throws java.io.IOException {
-        return com.google.protobuf.GeneratedMessage
-                .parseWithIOException(PARSER, input, extensionRegistry);
+    public static UserLocation parseFrom(InputStream input, ExtensionRegistryLite extensionRegistry)
+            throws IOException {
+        return GeneratedMessage.parseWithIOException(PARSER, input, extensionRegistry);
     }
 
-    public static im.turms.server.common.access.client.dto.model.user.UserLocation parseDelimitedFrom(
-            java.io.InputStream input) throws java.io.IOException {
-        return com.google.protobuf.GeneratedMessage.parseDelimitedWithIOException(PARSER, input);
+    public static UserLocation parseDelimitedFrom(InputStream input) throws IOException {
+        return GeneratedMessage.parseDelimitedWithIOException(PARSER, input);
     }
 
-    public static im.turms.server.common.access.client.dto.model.user.UserLocation parseDelimitedFrom(
-            java.io.InputStream input,
-            com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-            throws java.io.IOException {
-        return com.google.protobuf.GeneratedMessage
-                .parseDelimitedWithIOException(PARSER, input, extensionRegistry);
+    public static UserLocation parseDelimitedFrom(
+            InputStream input,
+            ExtensionRegistryLite extensionRegistry) throws IOException {
+        return GeneratedMessage.parseDelimitedWithIOException(PARSER, input, extensionRegistry);
     }
 
-    public static im.turms.server.common.access.client.dto.model.user.UserLocation parseFrom(
-            com.google.protobuf.CodedInputStream input) throws java.io.IOException {
-        return com.google.protobuf.GeneratedMessage.parseWithIOException(PARSER, input);
+    public static UserLocation parseFrom(CodedInputStream input) throws IOException {
+        return GeneratedMessage.parseWithIOException(PARSER, input);
     }
 
-    public static im.turms.server.common.access.client.dto.model.user.UserLocation parseFrom(
-            com.google.protobuf.CodedInputStream input,
-            com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-            throws java.io.IOException {
-        return com.google.protobuf.GeneratedMessage
-                .parseWithIOException(PARSER, input, extensionRegistry);
+    public static UserLocation parseFrom(
+            CodedInputStream input,
+            ExtensionRegistryLite extensionRegistry) throws IOException {
+        return GeneratedMessage.parseWithIOException(PARSER, input, extensionRegistry);
     }
 
-    @java.lang.Override
+    @Override
     public Builder newBuilderForType() {
         return newBuilder();
     }
@@ -425,38 +483,35 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
         return DEFAULT_INSTANCE.toBuilder();
     }
 
-    public static Builder newBuilder(
-            im.turms.server.common.access.client.dto.model.user.UserLocation prototype) {
+    public static Builder newBuilder(UserLocation prototype) {
         return DEFAULT_INSTANCE.toBuilder()
                 .mergeFrom(prototype);
     }
 
-    @java.lang.Override
+    @Override
     public Builder toBuilder() {
         return this == DEFAULT_INSTANCE
                 ? new Builder()
                 : new Builder().mergeFrom(this);
     }
 
-    @java.lang.Override
-    protected Builder newBuilderForType(com.google.protobuf.GeneratedMessage.BuilderParent parent) {
+    @Override
+    protected Builder newBuilderForType(GeneratedMessage.BuilderParent parent) {
         return new Builder(parent);
     }
 
     /**
      * Protobuf type {@code im.turms.proto.UserLocation}
      */
-    public static final class Builder extends com.google.protobuf.GeneratedMessage.Builder<Builder>
-            implements
+    public static final class Builder extends GeneratedMessage.Builder<Builder> implements
             // @@protoc_insertion_point(builder_implements:im.turms.proto.UserLocation)
-            im.turms.server.common.access.client.dto.model.user.UserLocationOrBuilder {
-        public static com.google.protobuf.Descriptors.Descriptor getDescriptor() {
-            return im.turms.server.common.access.client.dto.model.user.UserLocationOuterClass.internal_static_im_turms_proto_UserLocation_descriptor;
+            UserLocationOrBuilder {
+        public static Descriptors.Descriptor getDescriptor() {
+            return UserLocationOuterClass.internal_static_im_turms_proto_UserLocation_descriptor;
         }
 
         @SuppressWarnings({"rawtypes"})
-        protected com.google.protobuf.MapFieldReflectionAccessor internalGetMapFieldReflection(
-                int number) {
+        protected MapFieldReflectionAccessor internalGetMapFieldReflection(int number) {
             if (number == 4) {
                 return internalGetDetails();
             }
@@ -466,8 +521,7 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
         }
 
         @SuppressWarnings({"rawtypes"})
-        protected com.google.protobuf.MapFieldReflectionAccessor internalGetMutableMapFieldReflection(
-                int number) {
+        protected MapFieldReflectionAccessor internalGetMutableMapFieldReflection(int number) {
             if (number == 4) {
                 return internalGetMutableDetails();
             }
@@ -476,12 +530,11 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
                             + number);
         }
 
-        @java.lang.Override
-        protected com.google.protobuf.GeneratedMessage.FieldAccessorTable internalGetFieldAccessorTable() {
-            return im.turms.server.common.access.client.dto.model.user.UserLocationOuterClass.internal_static_im_turms_proto_UserLocation_fieldAccessorTable
-                    .ensureFieldAccessorsInitialized(
-                            im.turms.server.common.access.client.dto.model.user.UserLocation.class,
-                            im.turms.server.common.access.client.dto.model.user.UserLocation.Builder.class);
+        @Override
+        protected GeneratedMessage.FieldAccessorTable internalGetFieldAccessorTable() {
+            return UserLocationOuterClass.internal_static_im_turms_proto_UserLocation_fieldAccessorTable
+                    .ensureFieldAccessorsInitialized(UserLocation.class,
+                            UserLocation.Builder.class);
         }
 
         // Construct using
@@ -490,12 +543,12 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
 
         }
 
-        private Builder(com.google.protobuf.GeneratedMessage.BuilderParent parent) {
+        private Builder(GeneratedMessage.BuilderParent parent) {
             super(parent);
 
         }
 
-        @java.lang.Override
+        @Override
         public Builder clear() {
             super.clear();
             bitField0_ = 0;
@@ -503,34 +556,39 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
             longitude_ = 0F;
             timestamp_ = 0L;
             internalGetMutableDetails().clear();
+            if (customAttributesBuilder_ == null) {
+                customAttributes_ = Collections.emptyList();
+            } else {
+                customAttributes_ = null;
+                customAttributesBuilder_.clear();
+            }
+            bitField0_ &= ~0x00000010;
             return this;
         }
 
-        @java.lang.Override
-        public com.google.protobuf.Descriptors.Descriptor getDescriptorForType() {
-            return im.turms.server.common.access.client.dto.model.user.UserLocationOuterClass.internal_static_im_turms_proto_UserLocation_descriptor;
+        @Override
+        public Descriptors.Descriptor getDescriptorForType() {
+            return UserLocationOuterClass.internal_static_im_turms_proto_UserLocation_descriptor;
         }
 
-        @java.lang.Override
-        public im.turms.server.common.access.client.dto.model.user.UserLocation getDefaultInstanceForType() {
-            return im.turms.server.common.access.client.dto.model.user.UserLocation
-                    .getDefaultInstance();
+        @Override
+        public UserLocation getDefaultInstanceForType() {
+            return UserLocation.getDefaultInstance();
         }
 
-        @java.lang.Override
-        public im.turms.server.common.access.client.dto.model.user.UserLocation build() {
-            im.turms.server.common.access.client.dto.model.user.UserLocation result =
-                    buildPartial();
+        @Override
+        public UserLocation build() {
+            UserLocation result = buildPartial();
             if (!result.isInitialized()) {
                 throw newUninitializedMessageException(result);
             }
             return result;
         }
 
-        @java.lang.Override
-        public im.turms.server.common.access.client.dto.model.user.UserLocation buildPartial() {
-            im.turms.server.common.access.client.dto.model.user.UserLocation result =
-                    new im.turms.server.common.access.client.dto.model.user.UserLocation(this);
+        @Override
+        public UserLocation buildPartial() {
+            UserLocation result = new UserLocation(this);
+            buildPartialRepeatedFields(result);
             if (bitField0_ != 0) {
                 buildPartial0(result);
             }
@@ -538,8 +596,19 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
             return result;
         }
 
-        private void buildPartial0(
-                im.turms.server.common.access.client.dto.model.user.UserLocation result) {
+        private void buildPartialRepeatedFields(UserLocation result) {
+            if (customAttributesBuilder_ == null) {
+                if (((bitField0_ & 0x00000010) != 0)) {
+                    customAttributes_ = Collections.unmodifiableList(customAttributes_);
+                    bitField0_ &= ~0x00000010;
+                }
+                result.customAttributes_ = customAttributes_;
+            } else {
+                result.customAttributes_ = customAttributesBuilder_.build();
+            }
+        }
+
+        private void buildPartial0(UserLocation result) {
             int from_bitField0_ = bitField0_;
             if (((from_bitField0_ & 0x00000001) != 0)) {
                 result.latitude_ = latitude_;
@@ -559,21 +628,18 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
             result.bitField0_ |= to_bitField0_;
         }
 
-        @java.lang.Override
-        public Builder mergeFrom(com.google.protobuf.Message other) {
-            if (other instanceof im.turms.server.common.access.client.dto.model.user.UserLocation) {
-                return mergeFrom(
-                        (im.turms.server.common.access.client.dto.model.user.UserLocation) other);
+        @Override
+        public Builder mergeFrom(Message other) {
+            if (other instanceof UserLocation) {
+                return mergeFrom((UserLocation) other);
             } else {
                 super.mergeFrom(other);
                 return this;
             }
         }
 
-        public Builder mergeFrom(
-                im.turms.server.common.access.client.dto.model.user.UserLocation other) {
-            if (other == im.turms.server.common.access.client.dto.model.user.UserLocation
-                    .getDefaultInstance()) {
+        public Builder mergeFrom(UserLocation other) {
+            if (other == UserLocation.getDefaultInstance()) {
                 return this;
             }
             if (other.getLatitude() != 0F) {
@@ -587,23 +653,47 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
             }
             internalGetMutableDetails().mergeFrom(other.internalGetDetails());
             bitField0_ |= 0x00000008;
+            if (customAttributesBuilder_ == null) {
+                if (!other.customAttributes_.isEmpty()) {
+                    if (customAttributes_.isEmpty()) {
+                        customAttributes_ = other.customAttributes_;
+                        bitField0_ &= ~0x00000010;
+                    } else {
+                        ensureCustomAttributesIsMutable();
+                        customAttributes_.addAll(other.customAttributes_);
+                    }
+                    onChanged();
+                }
+            } else {
+                if (!other.customAttributes_.isEmpty()) {
+                    if (customAttributesBuilder_.isEmpty()) {
+                        customAttributesBuilder_.dispose();
+                        customAttributesBuilder_ = null;
+                        customAttributes_ = other.customAttributes_;
+                        bitField0_ &= ~0x00000010;
+                        customAttributesBuilder_ = GeneratedMessage.alwaysUseFieldBuilders
+                                ? getCustomAttributesFieldBuilder()
+                                : null;
+                    } else {
+                        customAttributesBuilder_.addAllMessages(other.customAttributes_);
+                    }
+                }
+            }
             this.mergeUnknownFields(other.getUnknownFields());
             onChanged();
             return this;
         }
 
-        @java.lang.Override
+        @Override
         public boolean isInitialized() {
             return true;
         }
 
-        @java.lang.Override
-        public Builder mergeFrom(
-                com.google.protobuf.CodedInputStream input,
-                com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-                throws java.io.IOException {
+        @Override
+        public Builder mergeFrom(CodedInputStream input, ExtensionRegistryLite extensionRegistry)
+                throws IOException {
             if (extensionRegistry == null) {
-                throw new java.lang.NullPointerException();
+                throw new NullPointerException();
             }
             try {
                 boolean done = false;
@@ -624,15 +714,22 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
                             bitField0_ |= 0x00000004;
                         } // case 24
                         case 34 -> {
-                            com.google.protobuf.MapEntry<String, String> details__ =
-                                    input.readMessage(
-                                            DetailsDefaultEntryHolder.defaultEntry
-                                                    .getParserForType(),
-                                            extensionRegistry);
+                            MapEntry<String, String> details__ = input.readMessage(
+                                    DetailsDefaultEntryHolder.defaultEntry.getParserForType(),
+                                    extensionRegistry);
                             internalGetMutableDetails().getMutableMap()
                                     .put(details__.getKey(), details__.getValue());
                             bitField0_ |= 0x00000008;
                         } // case 34
+                        case 122 -> {
+                            Value m = input.readMessage(Value.parser(), extensionRegistry);
+                            if (customAttributesBuilder_ == null) {
+                                ensureCustomAttributesIsMutable();
+                                customAttributes_.add(m);
+                            } else {
+                                customAttributesBuilder_.addMessage(m);
+                            }
+                        } // case 122
                         default -> {
                             if (!super.parseUnknownField(input, extensionRegistry, tag)) {
                                 done = true; // was an endgroup tag
@@ -640,7 +737,7 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
                         } // default:
                     } // switch (tag)
                 } // while (!done)
-            } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+            } catch (InvalidProtocolBufferException e) {
                 throw e.unwrapIOException();
             } finally {
                 onChanged();
@@ -657,7 +754,7 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
          *
          * @return The latitude.
          */
-        @java.lang.Override
+        @Override
         public float getLatitude() {
             return latitude_;
         }
@@ -695,7 +792,7 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
          *
          * @return The longitude.
          */
-        @java.lang.Override
+        @Override
         public float getLongitude() {
             return longitude_;
         }
@@ -733,7 +830,7 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
          *
          * @return Whether the timestamp field is set.
          */
-        @java.lang.Override
+        @Override
         public boolean hasTimestamp() {
             return ((bitField0_ & 0x00000004) != 0);
         }
@@ -743,7 +840,7 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
          *
          * @return The timestamp.
          */
-        @java.lang.Override
+        @Override
         public long getTimestamp() {
             return timestamp_;
         }
@@ -774,20 +871,18 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
             return this;
         }
 
-        private com.google.protobuf.MapField<java.lang.String, java.lang.String> details_;
+        private MapField<String, String> details_;
 
-        private com.google.protobuf.MapField<java.lang.String, java.lang.String> internalGetDetails() {
+        private MapField<String, String> internalGetDetails() {
             if (details_ == null) {
-                return com.google.protobuf.MapField
-                        .emptyMapField(DetailsDefaultEntryHolder.defaultEntry);
+                return MapField.emptyMapField(DetailsDefaultEntryHolder.defaultEntry);
             }
             return details_;
         }
 
-        private com.google.protobuf.MapField<java.lang.String, java.lang.String> internalGetMutableDetails() {
+        private MapField<String, String> internalGetMutableDetails() {
             if (details_ == null) {
-                details_ = com.google.protobuf.MapField
-                        .newMapField(DetailsDefaultEntryHolder.defaultEntry);
+                details_ = MapField.newMapField(DetailsDefaultEntryHolder.defaultEntry);
             }
             if (!details_.isMutable()) {
                 details_ = details_.copy();
@@ -809,8 +904,8 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
          *
          * <code>map&lt;string, string&gt; details = 4;</code>
          */
-        @java.lang.Override
-        public boolean containsDetails(java.lang.String key) {
+        @Override
+        public boolean containsDetails(String key) {
             if (key == null) {
                 throw new NullPointerException("map key");
             }
@@ -821,9 +916,9 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
         /**
          * Use {@link #getDetailsMap()} instead.
          */
-        @java.lang.Override
-        @java.lang.Deprecated
-        public java.util.Map<java.lang.String, java.lang.String> getDetails() {
+        @Override
+        @Deprecated
+        public Map<String, String> getDetails() {
             return getDetailsMap();
         }
 
@@ -834,8 +929,8 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
          *
          * <code>map&lt;string, string&gt; details = 4;</code>
          */
-        @java.lang.Override
-        public java.util.Map<java.lang.String, java.lang.String> getDetailsMap() {
+        @Override
+        public Map<String, String> getDetailsMap() {
             return internalGetDetails().getMap();
         }
 
@@ -846,16 +941,16 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
          *
          * <code>map&lt;string, string&gt; details = 4;</code>
          */
-        @java.lang.Override
+        @Override
         public /* nullable */
-        java.lang.String getDetailsOrDefault(
-                java.lang.String key,
+        String getDetailsOrDefault(
+                String key,
                 /* nullable */
-                java.lang.String defaultValue) {
+                String defaultValue) {
             if (key == null) {
                 throw new NullPointerException("map key");
             }
-            java.util.Map<java.lang.String, java.lang.String> map = internalGetDetails().getMap();
+            Map<String, String> map = internalGetDetails().getMap();
             return map.getOrDefault(key, defaultValue);
         }
 
@@ -866,14 +961,14 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
          *
          * <code>map&lt;string, string&gt; details = 4;</code>
          */
-        @java.lang.Override
-        public java.lang.String getDetailsOrThrow(java.lang.String key) {
+        @Override
+        public String getDetailsOrThrow(String key) {
             if (key == null) {
                 throw new NullPointerException("map key");
             }
-            java.util.Map<java.lang.String, java.lang.String> map = internalGetDetails().getMap();
+            Map<String, String> map = internalGetDetails().getMap();
             if (!map.containsKey(key)) {
-                throw new java.lang.IllegalArgumentException();
+                throw new IllegalArgumentException();
             }
             return map.get(key);
         }
@@ -892,7 +987,7 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
          *
          * <code>map&lt;string, string&gt; details = 4;</code>
          */
-        public Builder removeDetails(java.lang.String key) {
+        public Builder removeDetails(String key) {
             if (key == null) {
                 throw new NullPointerException("map key");
             }
@@ -904,8 +999,8 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
         /**
          * Use alternate mutation accessors instead.
          */
-        @java.lang.Deprecated
-        public java.util.Map<java.lang.String, java.lang.String> getMutableDetails() {
+        @Deprecated
+        public Map<String, String> getMutableDetails() {
             bitField0_ |= 0x00000008;
             return internalGetMutableDetails().getMutableMap();
         }
@@ -917,7 +1012,7 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
          *
          * <code>map&lt;string, string&gt; details = 4;</code>
          */
-        public Builder putDetails(java.lang.String key, java.lang.String value) {
+        public Builder putDetails(String key, String value) {
             if (key == null) {
                 throw new NullPointerException("map key");
             }
@@ -937,60 +1032,299 @@ public final class UserLocation extends com.google.protobuf.GeneratedMessage imp
          *
          * <code>map&lt;string, string&gt; details = 4;</code>
          */
-        public Builder putAllDetails(java.util.Map<java.lang.String, java.lang.String> values) {
+        public Builder putAllDetails(Map<String, String> values) {
             internalGetMutableDetails().getMutableMap()
                     .putAll(values);
             bitField0_ |= 0x00000008;
             return this;
         }
 
+        private List<Value> customAttributes_ = Collections.emptyList();
+
+        private void ensureCustomAttributesIsMutable() {
+            if ((bitField0_ & 0x00000010) == 0) {
+                customAttributes_ = new ArrayList<>(customAttributes_);
+                bitField0_ |= 0x00000010;
+            }
+        }
+
+        private RepeatedFieldBuilder<Value, Value.Builder, ValueOrBuilder> customAttributesBuilder_;
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public List<Value> getCustomAttributesList() {
+            if (customAttributesBuilder_ == null) {
+                return Collections.unmodifiableList(customAttributes_);
+            } else {
+                return customAttributesBuilder_.getMessageList();
+            }
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public int getCustomAttributesCount() {
+            if (customAttributesBuilder_ == null) {
+                return customAttributes_.size();
+            } else {
+                return customAttributesBuilder_.getCount();
+            }
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public Value getCustomAttributes(int index) {
+            if (customAttributesBuilder_ == null) {
+                return customAttributes_.get(index);
+            } else {
+                return customAttributesBuilder_.getMessage(index);
+            }
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public Builder setCustomAttributes(int index, Value value) {
+            if (customAttributesBuilder_ == null) {
+                if (value == null) {
+                    throw new NullPointerException();
+                }
+                ensureCustomAttributesIsMutable();
+                customAttributes_.set(index, value);
+                onChanged();
+            } else {
+                customAttributesBuilder_.setMessage(index, value);
+            }
+            return this;
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public Builder setCustomAttributes(int index, Value.Builder builderForValue) {
+            if (customAttributesBuilder_ == null) {
+                ensureCustomAttributesIsMutable();
+                customAttributes_.set(index, builderForValue.build());
+                onChanged();
+            } else {
+                customAttributesBuilder_.setMessage(index, builderForValue.build());
+            }
+            return this;
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public Builder addCustomAttributes(Value value) {
+            if (customAttributesBuilder_ == null) {
+                if (value == null) {
+                    throw new NullPointerException();
+                }
+                ensureCustomAttributesIsMutable();
+                customAttributes_.add(value);
+                onChanged();
+            } else {
+                customAttributesBuilder_.addMessage(value);
+            }
+            return this;
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public Builder addCustomAttributes(int index, Value value) {
+            if (customAttributesBuilder_ == null) {
+                if (value == null) {
+                    throw new NullPointerException();
+                }
+                ensureCustomAttributesIsMutable();
+                customAttributes_.add(index, value);
+                onChanged();
+            } else {
+                customAttributesBuilder_.addMessage(index, value);
+            }
+            return this;
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public Builder addCustomAttributes(Value.Builder builderForValue) {
+            if (customAttributesBuilder_ == null) {
+                ensureCustomAttributesIsMutable();
+                customAttributes_.add(builderForValue.build());
+                onChanged();
+            } else {
+                customAttributesBuilder_.addMessage(builderForValue.build());
+            }
+            return this;
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public Builder addCustomAttributes(int index, Value.Builder builderForValue) {
+            if (customAttributesBuilder_ == null) {
+                ensureCustomAttributesIsMutable();
+                customAttributes_.add(index, builderForValue.build());
+                onChanged();
+            } else {
+                customAttributesBuilder_.addMessage(index, builderForValue.build());
+            }
+            return this;
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public Builder addAllCustomAttributes(Iterable<? extends Value> values) {
+            if (customAttributesBuilder_ == null) {
+                ensureCustomAttributesIsMutable();
+                AbstractMessageLite.Builder.addAll(values, customAttributes_);
+                onChanged();
+            } else {
+                customAttributesBuilder_.addAllMessages(values);
+            }
+            return this;
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public Builder clearCustomAttributes() {
+            if (customAttributesBuilder_ == null) {
+                customAttributes_ = Collections.emptyList();
+                bitField0_ &= ~0x00000010;
+                onChanged();
+            } else {
+                customAttributesBuilder_.clear();
+            }
+            return this;
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public Builder removeCustomAttributes(int index) {
+            if (customAttributesBuilder_ == null) {
+                ensureCustomAttributesIsMutable();
+                customAttributes_.remove(index);
+                onChanged();
+            } else {
+                customAttributesBuilder_.remove(index);
+            }
+            return this;
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public Value.Builder getCustomAttributesBuilder(int index) {
+            return getCustomAttributesFieldBuilder().getBuilder(index);
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public ValueOrBuilder getCustomAttributesOrBuilder(int index) {
+            if (customAttributesBuilder_ == null) {
+                return customAttributes_.get(index);
+            } else {
+                return customAttributesBuilder_.getMessageOrBuilder(index);
+            }
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public List<? extends ValueOrBuilder> getCustomAttributesOrBuilderList() {
+            if (customAttributesBuilder_ != null) {
+                return customAttributesBuilder_.getMessageOrBuilderList();
+            } else {
+                return Collections.unmodifiableList(customAttributes_);
+            }
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public Value.Builder addCustomAttributesBuilder() {
+            return getCustomAttributesFieldBuilder().addBuilder(Value.getDefaultInstance());
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public Value.Builder addCustomAttributesBuilder(int index) {
+            return getCustomAttributesFieldBuilder().addBuilder(index, Value.getDefaultInstance());
+        }
+
+        /**
+         * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+         */
+        public List<Value.Builder> getCustomAttributesBuilderList() {
+            return getCustomAttributesFieldBuilder().getBuilderList();
+        }
+
+        private RepeatedFieldBuilder<Value, Value.Builder, ValueOrBuilder> getCustomAttributesFieldBuilder() {
+            if (customAttributesBuilder_ == null) {
+                customAttributesBuilder_ = new RepeatedFieldBuilder<>(
+                        customAttributes_,
+                        ((bitField0_ & 0x00000010) != 0),
+                        getParentForChildren(),
+                        isClean());
+                customAttributes_ = null;
+            }
+            return customAttributesBuilder_;
+        }
+
         // @@protoc_insertion_point(builder_scope:im.turms.proto.UserLocation)
     }
 
     // @@protoc_insertion_point(class_scope:im.turms.proto.UserLocation)
-    private static final im.turms.server.common.access.client.dto.model.user.UserLocation DEFAULT_INSTANCE;
+    private static final UserLocation DEFAULT_INSTANCE;
     static {
-        DEFAULT_INSTANCE = new im.turms.server.common.access.client.dto.model.user.UserLocation();
+        DEFAULT_INSTANCE = new UserLocation();
     }
 
-    public static im.turms.server.common.access.client.dto.model.user.UserLocation getDefaultInstance() {
+    public static UserLocation getDefaultInstance() {
         return DEFAULT_INSTANCE;
     }
 
-    private static final com.google.protobuf.Parser<UserLocation> PARSER =
-            new com.google.protobuf.AbstractParser<>() {
-                @java.lang.Override
-                public UserLocation parsePartialFrom(
-                        com.google.protobuf.CodedInputStream input,
-                        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-                        throws com.google.protobuf.InvalidProtocolBufferException {
-                    Builder builder = newBuilder();
-                    try {
-                        builder.mergeFrom(input, extensionRegistry);
-                    } catch (com.google.protobuf.InvalidProtocolBufferException e) {
-                        throw e.setUnfinishedMessage(builder.buildPartial());
-                    } catch (com.google.protobuf.UninitializedMessageException e) {
-                        throw e.asInvalidProtocolBufferException()
-                                .setUnfinishedMessage(builder.buildPartial());
-                    } catch (java.io.IOException e) {
-                        throw new com.google.protobuf.InvalidProtocolBufferException(e)
-                                .setUnfinishedMessage(builder.buildPartial());
-                    }
-                    return builder.buildPartial();
-                }
-            };
+    private static final Parser<UserLocation> PARSER = new AbstractParser<>() {
+        @Override
+        public UserLocation parsePartialFrom(
+                CodedInputStream input,
+                ExtensionRegistryLite extensionRegistry) throws InvalidProtocolBufferException {
+            Builder builder = newBuilder();
+            try {
+                builder.mergeFrom(input, extensionRegistry);
+            } catch (InvalidProtocolBufferException e) {
+                throw e.setUnfinishedMessage(builder.buildPartial());
+            } catch (UninitializedMessageException e) {
+                throw e.asInvalidProtocolBufferException()
+                        .setUnfinishedMessage(builder.buildPartial());
+            } catch (IOException e) {
+                throw new InvalidProtocolBufferException(e)
+                        .setUnfinishedMessage(builder.buildPartial());
+            }
+            return builder.buildPartial();
+        }
+    };
 
-    public static com.google.protobuf.Parser<UserLocation> parser() {
+    public static Parser<UserLocation> parser() {
         return PARSER;
     }
 
-    @java.lang.Override
-    public com.google.protobuf.Parser<UserLocation> getParserForType() {
+    @Override
+    public Parser<UserLocation> getParserForType() {
         return PARSER;
     }
 
-    @java.lang.Override
-    public im.turms.server.common.access.client.dto.model.user.UserLocation getDefaultInstanceForType() {
+    @Override
+    public UserLocation getDefaultInstanceForType() {
         return DEFAULT_INSTANCE;
     }
 

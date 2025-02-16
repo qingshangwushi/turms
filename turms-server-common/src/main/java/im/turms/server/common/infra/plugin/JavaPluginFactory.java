@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.zip.ZipFile;
 
 import org.eclipse.collections.impl.set.mutable.UnifiedSet;
 import org.springframework.context.ApplicationContext;
@@ -31,6 +32,7 @@ import im.turms.server.common.infra.cluster.node.NodeType;
 import im.turms.server.common.infra.collection.CollectionUtil;
 import im.turms.server.common.infra.lang.ClassUtil;
 import im.turms.server.common.infra.lang.StringUtil;
+import im.turms.server.common.infra.property.constant.DuplicateClassLoadStrategy;
 
 /**
  * @author James Chen
@@ -42,6 +44,8 @@ public class JavaPluginFactory {
 
     public static JavaPlugin create(
             JavaPluginDescriptor descriptor,
+            ZipFile zipFile,
+            DuplicateClassLoadStrategy duplicateClassLoadStrategy,
             NodeType nodeType,
             ApplicationContext context) {
         Map<NodeType, PluginDescriptor.ServerInfo> compatibleServerTypeToInfo =
@@ -58,7 +62,7 @@ public class JavaPluginFactory {
         }
         // Note that the loader should NOT be closed here
         // because it usually needs to load classes and resources in the JAR file later
-        PluginClassLoader classLoader = new PluginClassLoader(descriptor.getJarUrl());
+        PluginClassLoader classLoader = new PluginClassLoader(zipFile, duplicateClassLoadStrategy);
         try {
             Class<? extends TurmsPlugin> pluginClass;
             try {

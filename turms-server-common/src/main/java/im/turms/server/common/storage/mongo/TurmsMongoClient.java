@@ -35,9 +35,7 @@ import reactor.core.publisher.Sinks;
 
 import im.turms.server.common.infra.collection.CollectorUtil;
 import im.turms.server.common.infra.lang.Pair;
-import im.turms.server.common.infra.logging.core.logger.Logger;
-import im.turms.server.common.infra.logging.core.logger.LoggerFactory;
-import im.turms.server.common.infra.property.env.service.env.database.TurmsMongoProperties;
+import im.turms.server.common.infra.property.env.common.mongo.MongoProperties;
 import im.turms.server.common.storage.mongo.entity.MongoEntity;
 import im.turms.server.common.storage.mongo.exception.IncompatibleMongoException;
 import im.turms.server.common.storage.mongo.operation.MongoCollectionOptions;
@@ -48,8 +46,6 @@ import im.turms.server.common.storage.mongo.operation.TurmsMongoOperations;
  * @author James Chen
  */
 public final class TurmsMongoClient implements MongoOperationsSupport {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(TurmsMongoClient.class);
 
     private final Set<String> names = UnifiedSet.newSet(8);
     private List<ServerDescription> descriptions;
@@ -62,12 +58,16 @@ public final class TurmsMongoClient implements MongoOperationsSupport {
         return context.getEntities();
     }
 
-    public static Mono<TurmsMongoClient> of(TurmsMongoProperties properties, String name) {
+    public <T> MongoEntity<T> getEntity(Class<T> entityClass) {
+        return context.getEntity(entityClass);
+    }
+
+    public static Mono<TurmsMongoClient> of(MongoProperties properties, String name) {
         return of(properties, name, Collections.emptySet());
     }
 
     public static Mono<TurmsMongoClient> of(
-            TurmsMongoProperties properties,
+            MongoProperties properties,
             String name,
             Set<ClusterType> requiredClusterTypes) {
         Sinks.One<Void> connect = Sinks.one();
@@ -78,7 +78,7 @@ public final class TurmsMongoClient implements MongoOperationsSupport {
     }
 
     private TurmsMongoClient(
-            TurmsMongoProperties properties,
+            MongoProperties properties,
             String name,
             Set<ClusterType> requiredClusterTypes,
             Sinks.One<Void> connect) {
@@ -94,13 +94,18 @@ public final class TurmsMongoClient implements MongoOperationsSupport {
                 verifyServers(descriptions, name, requiredClusterTypes);
                 connect.tryEmitValue(null);
             } catch (Exception e) {
-                Sinks.EmitResult result = connect.tryEmitError(e);
-                if (result.isFailure()) {
-                    LOGGER.fatal(e.getMessage());
-                }
+                connect.tryEmitError(e);
             }
         });
         operations = new TurmsMongoOperations(context);
+        // Ping the server to check if the connection is available, and the server is alive quickly.
+        operations.ping()
+                .subscribe(null,
+                        t -> connect.tryEmitError(new RuntimeException(
+                                "Failed to ping the server for the mongo client: \""
+                                        + name
+                                        + "\"",
+                                t)));
     }
 
     public Mono<Void> destroy(long timeoutMillis) {

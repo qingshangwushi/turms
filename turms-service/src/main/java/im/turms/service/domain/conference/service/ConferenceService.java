@@ -38,11 +38,11 @@ import reactor.core.publisher.Mono;
 import im.turms.server.common.access.client.dto.ClientMessagePool;
 import im.turms.server.common.access.client.dto.constant.ResponseAction;
 import im.turms.server.common.access.common.ResponseStatusCode;
+import im.turms.server.common.domain.common.service.BaseService;
 import im.turms.server.common.infra.collection.CollectionUtil;
 import im.turms.server.common.infra.exception.IncompatibleInternalChangeException;
 import im.turms.server.common.infra.exception.IncompatibleJvmException;
 import im.turms.server.common.infra.exception.ResponseException;
-import im.turms.server.common.infra.exception.ResponseExceptionPublisherPool;
 import im.turms.server.common.infra.lang.StringPattern;
 import im.turms.server.common.infra.logging.core.logger.Logger;
 import im.turms.server.common.infra.logging.core.logger.LoggerFactory;
@@ -87,7 +87,7 @@ import im.turms.service.infra.proto.ProtoModelConvertor;
  */
 @Service
 @DependsOn(IMongoCollectionInitializer.BEAN_NAME)
-public class ConferenceService {
+public class ConferenceService extends BaseService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ConferenceService.class);
 
@@ -105,6 +105,48 @@ public class ConferenceService {
             CONFERENCE_NOT_IMPLEMENTED;
     private static final Mono<UpdateMeetingInvitationResult> ACCEPT_MEETING_INVITATION_NOT_IMPLEMENTED =
             CONFERENCE_NOT_IMPLEMENTED;
+
+    public static final Mono<Void> EXCEPTION_CREATE_MEETING_EXCEEDING_MAX_ACTIVE_MEETING_COUNT =
+            Mono.error(ResponseException
+                    .get(ResponseStatusCode.CREATE_MEETING_EXCEEDING_MAX_ACTIVE_MEETING_COUNT));
+
+    public static final Mono<CancelMeetingResult> EXCEPTION_CANCEL_NONEXISTENT_MEETING =
+            Mono.error(ResponseException.get(ResponseStatusCode.CANCEL_NONEXISTENT_MEETING));
+    public static final Mono<CancelMeetingResult> EXCEPTION_NOT_CREATOR_TO_CANCEL_MEETING =
+            Mono.error(ResponseException.get(ResponseStatusCode.NOT_CREATOR_TO_CANCEL_MEETING));
+
+    public static final Mono<UpdateMeetingResult> EXCEPTION_NOT_CREATOR_TO_UPDATE_MEETING_PASSWORD =
+            Mono.error(ResponseException
+                    .get(ResponseStatusCode.NOT_CREATOR_TO_UPDATE_MEETING_PASSWORD));
+    public static final Mono<UpdateMeetingResult> EXCEPTION_UPDATE_INFO_OF_NONEXISTENT_MEETING =
+            Mono.error(
+                    ResponseException.get(ResponseStatusCode.UPDATE_INFO_OF_NONEXISTENT_MEETING));
+
+    public static final Mono<UpdateMeetingInvitationResult> EXCEPTION_ACCEPT_MEETING_INVITATION_OF_EXPIRED_MEETING =
+            Mono.error(ResponseException
+                    .get(ResponseStatusCode.ACCEPT_MEETING_INVITATION_OF_EXPIRED_MEETING));
+    public static final Mono<UpdateMeetingInvitationResult> EXCEPTION_ACCEPT_MEETING_INVITATION_WITH_WRONG_PASSWORD =
+            Mono.error(ResponseException
+                    .get(ResponseStatusCode.ACCEPT_MEETING_INVITATION_WITH_WRONG_PASSWORD));
+    public static final Mono<UpdateMeetingInvitationResult> EXCEPTION_ACCEPT_MEETING_INVITATION_OF_CANCELED_MEETING =
+            Mono.error(ResponseException
+                    .get(ResponseStatusCode.ACCEPT_MEETING_INVITATION_OF_CANCELED_MEETING));
+    public static final Mono<UpdateMeetingInvitationResult> EXCEPTION_ACCEPT_MEETING_INVITATION_OF_ENDED_MEETING =
+            Mono.error(ResponseException
+                    .get(ResponseStatusCode.ACCEPT_MEETING_INVITATION_OF_ENDED_MEETING));
+    public static final Mono<UpdateMeetingInvitationResult> EXCEPTION_ACCEPT_MEETING_INVITATION_OF_PENDING_MEETING =
+            Mono.error(ResponseException
+                    .get(ResponseStatusCode.ACCEPT_MEETING_INVITATION_OF_PENDING_MEETING));
+    public static final Mono<UpdateMeetingInvitationResult> EXCEPTION_ACCEPT_NONEXISTENT_MEETING_INVITATION =
+            Mono.error(ResponseException
+                    .get(ResponseStatusCode.ACCEPT_NONEXISTENT_MEETING_INVITATION));
+
+    public static final Mono<Void> EXCEPTION_USER_ID_AND_GROUP_ID_MUST_NOT_BOTH_NON_NULL =
+            Mono.error(ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
+                    "\"userId\" and \"groupId\" must not both be non-null"));
+    public static final Mono<Void> EXCEPTION_USER_ID_AND_GROUP_ID_MUST_NOT_BOTH_NULL =
+            Mono.error(ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
+                    "\"userId\" and \"groupId\" must not both be null"));
 
     private static final CreateMeetingOptions CREATE_MEETING_OPTIONS_FOR_PRIVATE_MEETING =
             new CreateMeetingOptions(2, TimeUnit.HOURS);
@@ -295,8 +337,7 @@ public class ConferenceService {
                     COUNT_ACTIVE_MEETINGS_BY_USER_ID_NOT_IMPLEMENTED,
                     extensionPoint -> extensionPoint.countActiveMeetingsByUserId(requesterId)
                             .flatMap(count -> count > maxActiveMeetingCountPerUser
-                                    ? Mono.error(ResponseException.get(
-                                            ResponseStatusCode.CREATE_MEETING_EXCEEDING_MAX_ACTIVE_MEETING_COUNT))
+                                    ? EXCEPTION_CREATE_MEETING_EXCEEDING_MAX_ACTIVE_MEETING_COUNT
                                     : Mono.empty()))));
         }
         String finalPassword = password;
@@ -422,14 +463,12 @@ public class ConferenceService {
             return CONFERENCE_NOT_IMPLEMENTED;
         }
         return meetingRepository.findById(meetingId)
-                .switchIfEmpty(ResponseExceptionPublisherPool.resourceNotFound())
                 .flatMap(meeting -> {
                     if (!requesterId.equals(meeting.getCreatorId())) {
                         return isAllowedToViewMeetingInfo(requesterId, meeting)
                                 .flatMap(allowed -> allowed
-                                        ? Mono.error(ResponseException.get(
-                                                ResponseStatusCode.NOT_CREATOR_TO_CANCEL_MEETING))
-                                        : ResponseExceptionPublisherPool.resourceNotFound());
+                                        ? EXCEPTION_NOT_CREATOR_TO_CANCEL_MEETING
+                                        : EXCEPTION_CANCEL_NONEXISTENT_MEETING);
                     }
                     return meetingRepository.inTransaction(clientSession -> meetingRepository
                             .updateCancelDateIfNotCanceled(meetingId, new Date())
@@ -445,7 +484,8 @@ public class ConferenceService {
                                                         .cancelMeeting(requesterId, meetingId))
                                         .thenReturn(new CancelMeetingResult(true, meeting));
                             }));
-                });
+                })
+                .switchIfEmpty(EXCEPTION_CANCEL_NONEXISTENT_MEETING);
     }
 
     public Mono<Set<Long>> queryMeetingParticipants(@Nullable Long userId, @Nullable Long groupId) {
@@ -479,13 +519,28 @@ public class ConferenceService {
             return Mono.just(UpdateMeetingResult.FAILED);
         }
         return meetingRepository.findById(meetingId)
-                .flatMap(meeting -> isAllowedToViewMeetingInfo(requesterId, meeting)
-                        .flatMap(allowed -> allowed
-                                ? meetingRepository.updateMeeting(meetingId, name, intro, password)
-                                        .map(updateResult -> updateResult.getModifiedCount() > 0
-                                                ? new UpdateMeetingResult(true, meeting)
-                                                : UpdateMeetingResult.FAILED)
-                                : ResponseExceptionPublisherPool.resourceNotFound()));
+                .flatMap(meeting -> {
+                    // TODO: support configuring the logic of authorization.
+                    if (password != null) {
+                        if (requesterId.equals(meeting.getCreatorId())) {
+                            return meetingRepository.updateMeeting(meetingId, name, intro, password)
+                                    .map(updateResult -> updateResult.getModifiedCount() > 0
+                                            ? new UpdateMeetingResult(true, meeting)
+                                            : UpdateMeetingResult.FAILED);
+                        }
+                        return isAllowedToViewMeetingInfo(requesterId, meeting)
+                                .flatMap(allowed -> allowed
+                                        ? EXCEPTION_NOT_CREATOR_TO_UPDATE_MEETING_PASSWORD
+                                        : EXCEPTION_UPDATE_INFO_OF_NONEXISTENT_MEETING);
+                    }
+                    return isAllowedToViewMeetingInfo(requesterId, meeting)
+                            .flatMap(allowed -> allowed
+                                    ? meetingRepository.updateMeeting(meetingId, name, intro, null)
+                                            .map(updateResult -> updateResult.getModifiedCount() > 0
+                                                    ? new UpdateMeetingResult(true, meeting)
+                                                    : UpdateMeetingResult.FAILED)
+                                    : EXCEPTION_UPDATE_INFO_OF_NONEXISTENT_MEETING);
+                });
     }
 
     private Mono<Void> sendMeetingInvitationMessage(
@@ -496,8 +551,7 @@ public class ConferenceService {
             @Nullable Long groupId) {
         if (userId != null) {
             if (groupId != null) {
-                return Mono.error(ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
-                        "\"userId\" and \"groupId\" must not both be non-null"));
+                return EXCEPTION_USER_ID_AND_GROUP_ID_MUST_NOT_BOTH_NON_NULL;
             }
             var meetingInfoForParticipant = getMeetingInfoForParticipant(meeting);
             return messageService.saveAndSendMessage(null,
@@ -514,8 +568,7 @@ public class ConferenceService {
                     null,
                     null);
         } else if (groupId == null) {
-            return Mono.error(ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
-                    "\"userId\" and \"groupId\" must not both be null"));
+            return EXCEPTION_USER_ID_AND_GROUP_ID_MUST_NOT_BOTH_NULL;
         }
         var meetingInfoForParticipant = getMeetingInfoForParticipant(meeting);
         return messageService.saveAndSendMessage(null,
@@ -533,6 +586,9 @@ public class ConferenceService {
                 null);
     }
 
+    /**
+     * TODO: Allow developers to configuring whether a meeting invitation can only be updated once.
+     */
     public Mono<UpdateMeetingInvitationResult> authAndUpdateMeetingInvitation(
             @NotNull Long requesterId,
             @NotNull Long meetingId,
@@ -550,7 +606,7 @@ public class ConferenceService {
         }
         if (ResponseAction.IGNORE == responseAction
                 || ResponseAction.UNRECOGNIZED == responseAction) {
-            return Mono.empty();
+            return Mono.just(new UpdateMeetingInvitationResult(false, null, null));
         }
         return meetingRepository.findById(meetingId)
                 .flatMap(meeting -> {
@@ -559,8 +615,7 @@ public class ConferenceService {
                     // TODO: check if the user/group is active
                     Mono<UpdateMeetingInvitationResult> check = Mono.defer(() -> {
                         if (!isPasswordMatched(password, meeting.getPassword())) {
-                            return Mono.error(ResponseException.get(
-                                    ResponseStatusCode.WRONG_PASSWORD_TO_UPDATE_MEETING_INVITATION));
+                            return EXCEPTION_ACCEPT_MEETING_INVITATION_WITH_WRONG_PASSWORD;
                         } else if (ResponseAction.DECLINE == responseAction) {
                             return Mono
                                     .just(new UpdateMeetingInvitationResult(true, null, meeting));
@@ -576,21 +631,17 @@ public class ConferenceService {
                             long expiredDate = meeting.getCreationDate()
                                     .getTime() + idleTimeoutMillis;
                             if (expiredDate <= now) {
-                                return Mono.error(ResponseException
-                                        .get(ResponseStatusCode.JOIN_EXPIRED_MEETING));
+                                return EXCEPTION_ACCEPT_MEETING_INVITATION_OF_EXPIRED_MEETING;
                             }
                         }
                         if (isMeetingCanceled(meeting.getCancelDate(), now)) {
-                            return Mono.error(ResponseException
-                                    .get(ResponseStatusCode.JOIN_CANCELED_MEETING));
+                            return EXCEPTION_ACCEPT_MEETING_INVITATION_OF_CANCELED_MEETING;
                         }
                         if (!isMeetingStarted(startDate, now)) {
-                            return Mono.error(
-                                    ResponseException.get(ResponseStatusCode.JOIN_PENDING_MEETING));
+                            return EXCEPTION_ACCEPT_MEETING_INVITATION_OF_PENDING_MEETING;
                         }
                         if (isMeetingEnded(meeting.getEndDate(), now)) {
-                            return Mono.error(
-                                    ResponseException.get(ResponseStatusCode.JOIN_ENDED_MEETING));
+                            return EXCEPTION_ACCEPT_MEETING_INVITATION_OF_ENDED_MEETING;
                         }
                         return pluginManager.invokeFirstExtensionPoint(
                                 ConferenceServiceProvider.class,
@@ -606,19 +657,20 @@ public class ConferenceService {
                     if (userId != null) {
                         return userId.equals(requesterId)
                                 ? check
-                                : ResponseExceptionPublisherPool.resourceNotFound();
+                                : EXCEPTION_ACCEPT_NONEXISTENT_MEETING_INVITATION;
                     } else if (groupId != null) {
                         return groupMemberService.isGroupMember(groupId, requesterId, false)
                                 .flatMap(isGroupMember -> isGroupMember
                                         ? check
-                                        : ResponseExceptionPublisherPool.resourceNotFound());
+                                        : EXCEPTION_ACCEPT_NONEXISTENT_MEETING_INVITATION);
                     } else {
                         return check;
                     }
-                });
+                })
+                .switchIfEmpty(EXCEPTION_ACCEPT_NONEXISTENT_MEETING_INVITATION);
     }
 
-    public Flux<Meeting> queryMeetings(
+    public Flux<Meeting> authAndQueryMeetings(
             @NotNull Long requesterId,
             @Nullable Set<Long> ids,
             @Nullable Set<Long> creatorIds,

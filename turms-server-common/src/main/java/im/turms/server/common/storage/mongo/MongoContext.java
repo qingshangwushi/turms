@@ -34,13 +34,13 @@ import com.mongodb.reactivestreams.client.MongoClient;
 import com.mongodb.reactivestreams.client.MongoClients;
 import com.mongodb.reactivestreams.client.MongoCollection;
 import com.mongodb.reactivestreams.client.MongoDatabase;
-import io.lettuce.core.internal.Futures;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.netty.util.concurrent.Future;
 import lombok.Getter;
+import org.bson.BsonDocument;
 import org.bson.codecs.Codec;
 import org.bson.codecs.configuration.CodecRegistry;
 import org.jctools.maps.NonBlockingIdentityHashMap;
@@ -48,6 +48,7 @@ import reactor.core.publisher.Mono;
 
 import im.turms.server.common.infra.lang.Pair;
 import im.turms.server.common.infra.lang.StringUtil;
+import im.turms.server.common.infra.reactor.PublisherUtil;
 import im.turms.server.common.infra.thread.ThreadNameConst;
 import im.turms.server.common.storage.mongo.entity.MongoEntity;
 import im.turms.server.common.storage.mongo.entity.MongoEntityFactory;
@@ -122,7 +123,7 @@ public class MongoContext {
         client.close();
         Future<?> future =
                 eventLoopGroup.shutdownGracefully(0, timeoutMillis, TimeUnit.MILLISECONDS);
-        return Mono.fromCompletionStage(Futures.toCompletionStage(future))
+        return PublisherUtil.fromFuture(future)
                 .then();
     }
 
@@ -133,10 +134,14 @@ public class MongoContext {
     public <T> MongoCollection<T> getCollection(Class<T> entityClass) {
         MongoCollection<T> collection = (MongoCollection<T>) classToCollection.get(entityClass);
         if (collection == null) {
-            return (MongoCollection<T>) registerEntitiesByClasses(List.of(entityClass)).get(0)
+            return (MongoCollection<T>) registerEntitiesByClasses(List.of(entityClass)).getFirst()
                     .second();
         }
         return collection;
+    }
+
+    public MongoCollection<BsonDocument> getCollection(String collectionName) {
+        return database.getCollection(collectionName, BsonDocument.class);
     }
 
     public List<MongoEntity<?>> getEntities() {
@@ -146,7 +151,7 @@ public class MongoContext {
     public <T> MongoEntity<T> getEntity(Class<T> entityClass) {
         MongoEntity<T> entity = (MongoEntity<T>) classToEntity.get(entityClass);
         if (entity == null) {
-            return (MongoEntity<T>) registerEntitiesByClasses(List.of(entityClass)).get(0)
+            return (MongoEntity<T>) registerEntitiesByClasses(List.of(entityClass)).getFirst()
                     .first();
         }
         return entity;

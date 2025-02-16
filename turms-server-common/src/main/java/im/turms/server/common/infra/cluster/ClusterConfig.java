@@ -23,10 +23,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
 
 import im.turms.server.common.infra.address.BaseServiceAddressManager;
+import im.turms.server.common.infra.application.JobShutdownOrder;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.cluster.node.Node;
-import im.turms.server.common.infra.cluster.node.NodeType;
-import im.turms.server.common.infra.context.JobShutdownOrder;
-import im.turms.server.common.infra.context.TurmsApplicationContext;
 import im.turms.server.common.infra.healthcheck.HealthCheckManager;
 import im.turms.server.common.infra.property.TurmsPropertiesManager;
 import im.turms.server.common.storage.mongo.IMongoCollectionInitializer;
@@ -41,21 +40,19 @@ public class ClusterConfig {
     @Bean
     public Node node(
             ApplicationContext context,
-            NodeType nodeType,
             TurmsApplicationContext turmsContext,
             TurmsPropertiesManager propertiesManager,
             BaseServiceAddressManager serviceAddressManager,
             HealthCheckManager healthCheckManager) {
         Node node = new Node(
                 context,
-                nodeType,
                 turmsContext,
                 propertiesManager,
                 serviceAddressManager,
                 healthCheckManager);
         // Note that the shutdown hook should be registered before "node#start"
         // because the node may fail to start and throw while the shutdown job should also run
-        // in this case. e.g. unregister current node.
+        // in this case. e.g., unregister the current node.
         turmsContext.addShutdownHook(JobShutdownOrder.CLOSE_NODE, node::stop);
         node.start();
         return node;

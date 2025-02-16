@@ -19,15 +19,15 @@ package im.turms.gateway.storage.redis;
 
 import org.springframework.context.annotation.Configuration;
 
-import im.turms.server.common.infra.context.TurmsApplicationContext;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.property.TurmsPropertiesManager;
-import im.turms.server.common.storage.redis.CommonRedisConfig;
+import im.turms.server.common.storage.redis.BaseRedisConfig;
 
 /**
  * @author James Chen
  */
 @Configuration
-public class RedisConfig extends CommonRedisConfig {
+public class RedisConfig extends BaseRedisConfig {
 
     protected RedisConfig(
             TurmsApplicationContext context,

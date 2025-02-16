@@ -44,16 +44,17 @@ import reactor.core.publisher.Mono;
 import im.turms.server.common.domain.admin.po.Admin;
 import im.turms.server.common.domain.admin.po.AdminRole;
 import im.turms.server.common.domain.user.po.User;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.cluster.node.Node;
 import im.turms.server.common.infra.collection.CollectionUtil;
-import im.turms.server.common.infra.context.TurmsApplicationContext;
+import im.turms.server.common.infra.collection.CollectorUtil;
 import im.turms.server.common.infra.lang.Pair;
 import im.turms.server.common.infra.logging.core.logger.Logger;
 import im.turms.server.common.infra.logging.core.logger.LoggerFactory;
 import im.turms.server.common.infra.property.TurmsPropertiesManager;
 import im.turms.server.common.infra.property.env.service.ServiceProperties;
-import im.turms.server.common.infra.property.env.service.env.database.MongoProperties;
-import im.turms.server.common.infra.property.env.service.env.database.TieredStorageProperties;
+import im.turms.server.common.infra.property.env.service.env.mongo.MongoGroupProperties;
+import im.turms.server.common.infra.property.env.service.env.mongo.TieredStorageProperties;
 import im.turms.server.common.infra.reactor.PublisherUtil;
 import im.turms.server.common.infra.reflect.ReflectionUtil;
 import im.turms.server.common.infra.security.password.PasswordManager;
@@ -67,6 +68,7 @@ import im.turms.server.common.storage.mongo.entity.Zone;
 import im.turms.server.common.storage.mongo.entity.annotation.CompoundIndex;
 import im.turms.server.common.storage.mongo.model.Tag;
 import im.turms.service.domain.conference.po.Meeting;
+import im.turms.service.domain.conversation.po.ConversationSettings;
 import im.turms.service.domain.conversation.po.GroupConversation;
 import im.turms.service.domain.conversation.po.PrivateConversation;
 import im.turms.service.domain.group.po.Group;
@@ -79,13 +81,14 @@ import im.turms.service.domain.group.po.GroupType;
 import im.turms.service.domain.group.po.GroupVersion;
 import im.turms.service.domain.message.po.Message;
 import im.turms.service.domain.user.po.UserFriendRequest;
-import im.turms.service.domain.user.po.UserPermissionGroup;
 import im.turms.service.domain.user.po.UserRelationship;
 import im.turms.service.domain.user.po.UserRelationshipGroup;
 import im.turms.service.domain.user.po.UserRelationshipGroupMember;
+import im.turms.service.domain.user.po.UserRole;
+import im.turms.service.domain.user.po.UserSettings;
 import im.turms.service.domain.user.po.UserVersion;
 
-import static im.turms.server.common.infra.property.env.service.env.database.TieredStorageProperties.StorageTierProperties;
+import static im.turms.server.common.infra.property.env.service.env.mongo.TieredStorageProperties.StorageTierProperties;
 
 /**
  * @author James Chen
@@ -96,16 +99,18 @@ public class MongoCollectionInitializer implements IMongoCollectionInitializer {
     private static final Logger LOGGER = LoggerFactory.getLogger(MongoCollectionInitializer.class);
 
     private final TurmsMongoClient adminMongoClient;
-    private final TurmsMongoClient userMongoClient;
-    private final TurmsMongoClient groupMongoClient;
+    private final TurmsMongoClient conferenceMongoClient;
     private final TurmsMongoClient conversationMongoClient;
+    private final TurmsMongoClient groupMongoClient;
     private final TurmsMongoClient messageMongoClient;
+    private final TurmsMongoClient userMongoClient;
     private final List<TurmsMongoClient> clients;
 
     private final TurmsApplicationContext context;
-    private final MongoFakingManager fakingManager;
+    private final MongoCollectionMigrator collectionMigrator;
+    private final MongoFakeDataGenerator fakeDataGenerator;
     private final TieredStorageProperties messageTieredStorageProperties;
-    private final MongoProperties mongoProperties;
+    private final MongoGroupProperties mongoGroupProperties;
 
     private final boolean useConversationId;
 
@@ -115,20 +120,22 @@ public class MongoCollectionInitializer implements IMongoCollectionInitializer {
     public MongoCollectionInitializer(
             @Lazy Node node,
             TurmsMongoClient adminMongoClient,
-            TurmsMongoClient userMongoClient,
-            TurmsMongoClient groupMongoClient,
+            TurmsMongoClient conferenceMongoClient,
             TurmsMongoClient conversationMongoClient,
+            TurmsMongoClient groupMongoClient,
             TurmsMongoClient messageMongoClient,
+            TurmsMongoClient userMongoClient,
             PasswordManager passwordManager,
             TaskManager taskManager,
             TurmsApplicationContext context,
             TurmsPropertiesManager propertiesManager) {
         this.node = node;
         this.adminMongoClient = adminMongoClient;
-        this.userMongoClient = userMongoClient;
-        this.groupMongoClient = groupMongoClient;
+        this.conferenceMongoClient = conferenceMongoClient;
         this.conversationMongoClient = conversationMongoClient;
+        this.groupMongoClient = groupMongoClient;
         this.messageMongoClient = messageMongoClient;
+        this.userMongoClient = userMongoClient;
         clients = List.of(adminMongoClient,
                 userMongoClient,
                 groupMongoClient,
@@ -138,7 +145,8 @@ public class MongoCollectionInitializer implements IMongoCollectionInitializer {
         this.propertiesManager = propertiesManager;
         ServiceProperties serviceProperties = propertiesManager.getLocalProperties()
                 .getService();
-        fakingManager = new MongoFakingManager(
+        collectionMigrator = new MongoCollectionMigrator(adminMongoClient, userMongoClient);
+        fakeDataGenerator = new MongoFakeDataGenerator(
                 serviceProperties.getFake(),
                 passwordManager,
                 adminMongoClient,
@@ -146,7 +154,7 @@ public class MongoCollectionInitializer implements IMongoCollectionInitializer {
                 groupMongoClient,
                 conversationMongoClient,
                 messageMongoClient);
-        mongoProperties = serviceProperties.getMongo();
+        mongoGroupProperties = serviceProperties.getMongo();
         messageTieredStorageProperties = serviceProperties.getMongo()
                 .getMessage()
                 .getTieredStorage();
@@ -182,8 +190,9 @@ public class MongoCollectionInitializer implements IMongoCollectionInitializer {
     }
 
     private void initCollections() {
-        if (!context.isProduction() && fakingManager.isClearAllCollectionsBeforeFaking()) {
-            LOGGER.info("Start dropping databases");
+        boolean migrateCollections;
+        if (!context.isProduction() && fakeDataGenerator.isClearAllCollectionsBeforeFaking()) {
+            LOGGER.warn("Start dropping databases");
             try {
                 dropAllDatabases().block(DurationConst.ONE_MINUTE);
             } catch (Exception e) {
@@ -191,15 +200,17 @@ public class MongoCollectionInitializer implements IMongoCollectionInitializer {
                         "Caught an error while dropping databases",
                         e);
             }
-            LOGGER.info("All collections are cleared");
+            LOGGER.warn("All databases are dropped");
+            migrateCollections = false;
+        } else {
+            migrateCollections = true;
         }
-        LOGGER.info("Start creating collections");
-        Mono<Void> createCollections = createCollectionsIfNotExist()
+        Mono<Void> createCollections = createCollectionsIfNotExist(migrateCollections)
                 .onErrorMap(
                         t -> new MongoInitializationException("Failed to create collections", t))
                 .doOnSuccess(ignored -> LOGGER.info("All collections are created"))
                 .flatMap(exists -> {
-                    if (exists && !fakingManager.isFakeIfCollectionExists()) {
+                    if (exists && !fakeDataGenerator.isFakeIfCollectionExists()) {
                         return Mono.empty();
                     }
                     return Mono.defer(() -> ensureZones()
@@ -207,9 +218,9 @@ public class MongoCollectionInitializer implements IMongoCollectionInitializer {
                                     .onErrorMap(t -> new MongoInitializationException(
                                             "Failed to ensure indexes and shards",
                                             t)))
-                            .then(Mono.defer(
-                                    () -> !context.isProduction() && fakingManager.isFakingEnabled()
-                                            ? fakingManager.fakeData()
+                            .then(Mono.defer(() -> !context.isProduction()
+                                    && fakeDataGenerator.isFakingEnabled()
+                                            ? fakeDataGenerator.populateCollectionsWithFakeData()
                                             : Mono.empty())));
                 });
         try {
@@ -222,30 +233,76 @@ public class MongoCollectionInitializer implements IMongoCollectionInitializer {
     /**
      * @return True if all collections have existed
      */
-    private Mono<Boolean> createCollectionsIfNotExist() {
-        return PublisherUtil.areAllTrue(adminMongoClient.createCollectionIfNotExists(Admin.class),
-                adminMongoClient.createCollectionIfNotExists(AdminRole.class),
+    private Mono<Boolean> createCollectionsIfNotExist(boolean migrateCollections) {
+        return adminMongoClient.listCollectionNames()
+                .collect(CollectorUtil.toSet(32))
+                .flatMap(existingCollectionNames -> {
+                    if (migrateCollections) {
+                        return collectionMigrator.migrate(existingCollectionNames)
+                                .then(Mono.defer(() -> {
+                                    LOGGER.info("Start creating collections");
+                                    return createCollectionsIfNotExist(existingCollectionNames);
+                                }));
+                    }
+                    LOGGER.info("Start creating collections");
+                    return createCollectionsIfNotExist(existingCollectionNames);
+                });
+    }
 
-                groupMongoClient.createCollectionIfNotExists(Group.class),
-                groupMongoClient.createCollectionIfNotExists(GroupBlockedUser.class),
-                groupMongoClient.createCollectionIfNotExists(GroupInvitation.class),
-                groupMongoClient.createCollectionIfNotExists(GroupJoinQuestion.class),
-                groupMongoClient.createCollectionIfNotExists(GroupMember.class),
-                groupMongoClient.createCollectionIfNotExists(GroupType.class),
-                groupMongoClient.createCollectionIfNotExists(GroupVersion.class),
+    private Mono<Boolean> createCollectionsIfNotExist(Set<String> existingCollectionNames) {
+        return PublisherUtil.areAllTrue(
+                adminMongoClient.createCollectionIfNotExists(Admin.class, existingCollectionNames),
+                adminMongoClient.createCollectionIfNotExists(AdminRole.class,
+                        existingCollectionNames),
 
-                conversationMongoClient.createCollectionIfNotExists(PrivateConversation.class),
-                conversationMongoClient.createCollectionIfNotExists(GroupConversation.class),
+                groupMongoClient.createCollectionIfNotExists(Group.class, existingCollectionNames),
+                groupMongoClient.createCollectionIfNotExists(GroupBlockedUser.class,
+                        existingCollectionNames),
+                groupMongoClient.createCollectionIfNotExists(GroupInvitation.class,
+                        existingCollectionNames),
+                groupMongoClient.createCollectionIfNotExists(GroupJoinQuestion.class,
+                        existingCollectionNames),
+                groupMongoClient.createCollectionIfNotExists(GroupJoinRequest.class,
+                        existingCollectionNames),
+                groupMongoClient.createCollectionIfNotExists(GroupMember.class,
+                        existingCollectionNames),
+                groupMongoClient.createCollectionIfNotExists(GroupType.class,
+                        existingCollectionNames),
+                groupMongoClient.createCollectionIfNotExists(GroupVersion.class,
+                        existingCollectionNames),
 
-                messageMongoClient.createCollectionIfNotExists(Message.class),
+                conferenceMongoClient.createCollectionIfNotExists(Meeting.class,
+                        existingCollectionNames),
 
-                userMongoClient.createCollectionIfNotExists(User.class),
-                userMongoClient.createCollectionIfNotExists(UserFriendRequest.class),
-                userMongoClient.createCollectionIfNotExists(UserPermissionGroup.class),
-                userMongoClient.createCollectionIfNotExists(UserRelationship.class),
-                userMongoClient.createCollectionIfNotExists(UserRelationshipGroup.class),
-                userMongoClient.createCollectionIfNotExists(UserRelationshipGroupMember.class),
-                userMongoClient.createCollectionIfNotExists(UserVersion.class));
+                messageMongoClient.createCollectionIfNotExists(Message.class,
+                        existingCollectionNames),
+
+                conversationMongoClient.createCollectionIfNotExists(ConversationSettings.class,
+                        existingCollectionNames),
+                conversationMongoClient.createCollectionIfNotExists(GroupConversation.class,
+                        existingCollectionNames),
+                conversationMongoClient.createCollectionIfNotExists(PrivateConversation.class,
+                        existingCollectionNames),
+
+                // ElasticsearchManager has its own logic to create collections dynamically,
+                // so we don't need to create collections for it.
+                // mongoClient.createCollectionIfNotExists(SyncLog.class),
+
+                userMongoClient.createCollectionIfNotExists(User.class, existingCollectionNames),
+                userMongoClient.createCollectionIfNotExists(UserFriendRequest.class,
+                        existingCollectionNames),
+                userMongoClient.createCollectionIfNotExists(UserRelationship.class,
+                        existingCollectionNames),
+                userMongoClient.createCollectionIfNotExists(UserRelationshipGroup.class,
+                        existingCollectionNames),
+                userMongoClient.createCollectionIfNotExists(UserRelationshipGroupMember.class,
+                        existingCollectionNames),
+                userMongoClient.createCollectionIfNotExists(UserRole.class,
+                        existingCollectionNames),
+                userMongoClient.createCollectionIfNotExists(UserSettings.class,
+                        existingCollectionNames),
+                userMongoClient.createCollectionIfNotExists(UserVersion.class,
+                        existingCollectionNames));
     }
 
     private Mono<Void> dropAllDatabases() {
@@ -293,57 +350,57 @@ public class MongoCollectionInitializer implements IMongoCollectionInitializer {
             String fieldName = field.getName();
             if (entityClass == Admin.class) {
                 return isCustomIndexEnabled.test(fieldName,
-                        mongoProperties.getAdmin()
+                        mongoGroupProperties.getAdmin()
                                 .getOptionalIndex()
                                 .getAdmin());
             } else if (entityClass == Group.class) {
                 return isCustomIndexEnabled.test(fieldName,
-                        mongoProperties.getGroup()
+                        mongoGroupProperties.getGroup()
                                 .getOptionalIndex()
                                 .getGroup());
             } else if (entityClass == GroupBlockedUser.class) {
                 return isCustomIndexEnabled.test(fieldName,
-                        mongoProperties.getGroup()
+                        mongoGroupProperties.getGroup()
                                 .getOptionalIndex()
                                 .getGroupBlockedUser());
             } else if (entityClass == GroupInvitation.class) {
                 return isCustomIndexEnabled.test(fieldName,
-                        mongoProperties.getGroup()
+                        mongoGroupProperties.getGroup()
                                 .getOptionalIndex()
                                 .getGroupInvitation());
             } else if (entityClass == GroupJoinRequest.class) {
                 return isCustomIndexEnabled.test(fieldName,
-                        mongoProperties.getGroup()
+                        mongoGroupProperties.getGroup()
                                 .getOptionalIndex()
                                 .getGroupJoinRequest());
             } else if (entityClass == GroupMember.class) {
                 return isCustomIndexEnabled.test(fieldName,
-                        mongoProperties.getGroup()
+                        mongoGroupProperties.getGroup()
                                 .getOptionalIndex()
                                 .getGroupMember());
             } else if (entityClass == Message.class) {
                 return isCustomIndexEnabled.test(fieldName,
-                        mongoProperties.getMessage()
+                        mongoGroupProperties.getMessage()
                                 .getOptionalIndex()
                                 .getMessage());
             } else if (entityClass == Meeting.class) {
                 return isCustomIndexEnabled.test(fieldName,
-                        mongoProperties.getConference()
+                        mongoGroupProperties.getConference()
                                 .getOptionalIndex()
                                 .getMeeting());
             } else if (entityClass == UserFriendRequest.class) {
                 return isCustomIndexEnabled.test(fieldName,
-                        mongoProperties.getUser()
+                        mongoGroupProperties.getUser()
                                 .getOptionalIndex()
                                 .getUserFriendRequest());
             } else if (entityClass == UserRelationship.class) {
                 return isCustomIndexEnabled.test(fieldName,
-                        mongoProperties.getUser()
+                        mongoGroupProperties.getUser()
                                 .getOptionalIndex()
                                 .getUserRelationship());
             } else if (entityClass == UserRelationshipGroupMember.class) {
                 return isCustomIndexEnabled.test(fieldName,
-                        mongoProperties.getUser()
+                        mongoGroupProperties.getUser()
                                 .getOptionalIndex()
                                 .getUserRelationshipGroupMember());
             } else {

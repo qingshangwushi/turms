@@ -44,7 +44,7 @@ import im.turms.server.common.infra.logging.core.logger.LoggerFactory;
  */
 @Accessors(fluent = true)
 @Data
-public abstract sealed class Plugin permits JavaPlugin, JsPlugin {
+public abstract sealed class Plugin implements AutoCloseable permits JavaPlugin, JsPlugin {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Plugin.class);
 
@@ -77,7 +77,8 @@ public abstract sealed class Plugin permits JavaPlugin, JsPlugin {
         return Mono.whenDelayError(startMonos)
                 .onErrorMap(t -> new RuntimeException(
                         "Caught errors while starting the extensions of the plugin: "
-                                + descriptor.getId()))
+                                + descriptor.getId(),
+                        t))
                 .doOnSuccess(
                         unused -> LOGGER.info("The extensions of the plugin ({}) have been started",
                                 descriptor.getId()));
@@ -97,10 +98,10 @@ public abstract sealed class Plugin permits JavaPlugin, JsPlugin {
                 .materialize()
                 .flatMap(signal -> {
                     Throwable stopExtensionsException = signal.getThrowable();
-                    RuntimeException closeContextException = null;
+                    Exception closeContextException = null;
                     try {
-                        closeContext();
-                    } catch (RuntimeException e) {
+                        close();
+                    } catch (Exception e) {
                         closeContextException = e;
                     }
                     if (stopExtensionsException != null || closeContextException != null) {
@@ -134,7 +135,8 @@ public abstract sealed class Plugin permits JavaPlugin, JsPlugin {
         return Mono.whenDelayError(resumeMonos)
                 .onErrorMap(t -> new RuntimeException(
                         "Caught errors while resuming the extensions of the plugin: "
-                                + descriptor.getId()))
+                                + descriptor.getId(),
+                        t))
                 .doOnSuccess(
                         unused -> LOGGER.info("The extensions of the plugin ({}) have been resumed",
                                 descriptor.getId()));
@@ -153,12 +155,11 @@ public abstract sealed class Plugin permits JavaPlugin, JsPlugin {
         return Mono.whenDelayError(pauseMonos)
                 .onErrorMap(t -> new RuntimeException(
                         "Caught errors while pausing the extensions of the plugin: "
-                                + descriptor.getId()))
+                                + descriptor.getId(),
+                        t))
                 .doOnSuccess(
                         unused -> LOGGER.info("The extensions of the plugin ({}) have been paused",
                                 descriptor.getId()));
     }
-
-    abstract void closeContext();
 
 }

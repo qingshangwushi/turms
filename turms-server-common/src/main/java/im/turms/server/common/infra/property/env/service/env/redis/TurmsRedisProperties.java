@@ -23,7 +23,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 
-import im.turms.server.common.infra.property.env.common.CommonRedisProperties;
+import im.turms.server.common.infra.property.env.common.BaseRedisProperties;
 import im.turms.server.common.storage.redis.RedisProperties;
 
 /**
@@ -33,9 +33,9 @@ import im.turms.server.common.storage.redis.RedisProperties;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
-public class TurmsRedisProperties extends CommonRedisProperties {
+public class TurmsRedisProperties extends BaseRedisProperties {
 
     @NestedConfigurationProperty
-    private RedisProperties sequenceId = new RedisProperties();
+    protected RedisProperties sequenceId = new RedisProperties();
 
 }

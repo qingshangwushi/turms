@@ -28,8 +28,8 @@ public final class LongsWithVersion extends com.google.protobuf.GeneratedMessage
         com.google.protobuf.RuntimeVersion.validateProtobufGencodeVersion(
                 com.google.protobuf.RuntimeVersion.RuntimeDomain.PUBLIC,
                 /* major= */ 4,
-                /* minor= */ 27,
-                /* patch= */ 0,
+                /* minor= */ 29,
+                /* patch= */ 1,
                 /* suffix= */ "",
                 LongsWithVersion.class.getName());
     }
@@ -133,7 +133,7 @@ public final class LongsWithVersion extends com.google.protobuf.GeneratedMessage
     @java.lang.Override
     public void writeTo(com.google.protobuf.CodedOutputStream output) throws java.io.IOException {
         getSerializedSize();
-        if (getLongsList().size() > 0) {
+        if (!getLongsList().isEmpty()) {
             output.writeUInt32NoTag(10);
             output.writeUInt32NoTag(longsMemoizedSerializedSize);
         }

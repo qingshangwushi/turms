@@ -18,11 +18,13 @@
 package im.turms.service.domain.group.po;
 
 import java.util.Date;
+import java.util.Map;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
 import im.turms.server.common.domain.common.po.BaseEntity;
+import im.turms.server.common.domain.common.po.Customizable;
 import im.turms.server.common.storage.mongo.entity.annotation.Document;
 import im.turms.server.common.storage.mongo.entity.annotation.Field;
 import im.turms.server.common.storage.mongo.entity.annotation.Id;
@@ -41,7 +43,7 @@ import static im.turms.server.common.storage.mongo.entity.annotation.IndexedReas
 @Data
 @Document(Group.COLLECTION_NAME)
 @Sharded
-public final class Group extends BaseEntity {
+public final class Group extends BaseEntity implements Customizable {
 
     public static final String COLLECTION_NAME = "group";
 
@@ -102,6 +104,8 @@ public final class Group extends BaseEntity {
 
     @Field(Fields.IS_ACTIVE)
     private final Boolean isActive;
+
+    private final Map<String, Object> userDefinedAttributes;
 
     public static final class Fields {
         public static final String TYPE_ID = "tid";

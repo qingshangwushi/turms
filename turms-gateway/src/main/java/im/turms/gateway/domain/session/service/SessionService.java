@@ -51,6 +51,7 @@ import im.turms.server.common.access.client.dto.constant.DeviceType;
 import im.turms.server.common.access.client.dto.constant.UserStatus;
 import im.turms.server.common.access.client.dto.request.TurmsRequest;
 import im.turms.server.common.access.common.ResponseStatusCode;
+import im.turms.server.common.domain.common.service.BaseService;
 import im.turms.server.common.domain.common.util.DeviceTypeUtil;
 import im.turms.server.common.domain.location.bo.Location;
 import im.turms.server.common.domain.session.bo.CloseReason;
@@ -63,11 +64,11 @@ import im.turms.server.common.domain.session.rpc.dto.SetUserOfflineRequest;
 import im.turms.server.common.domain.session.rpc.service.RpcSessionService;
 import im.turms.server.common.domain.session.service.SessionLocationService;
 import im.turms.server.common.domain.session.service.UserStatusService;
+import im.turms.server.common.infra.application.JobShutdownOrder;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.cluster.node.Node;
 import im.turms.server.common.infra.cluster.service.rpc.exception.ConnectionNotFound;
 import im.turms.server.common.infra.collection.CollectionUtil;
-import im.turms.server.common.infra.context.JobShutdownOrder;
-import im.turms.server.common.infra.context.TurmsApplicationContext;
 import im.turms.server.common.infra.exception.IncompatibleInternalChangeException;
 import im.turms.server.common.infra.exception.ResponseException;
 import im.turms.server.common.infra.lang.ByteArrayWrapper;
@@ -81,17 +82,18 @@ import im.turms.server.common.infra.property.env.gateway.session.DeviceDetailsPr
 import im.turms.server.common.infra.property.env.gateway.session.SessionProperties;
 import im.turms.server.common.infra.reactor.PublisherPool;
 import im.turms.server.common.infra.reactor.PublisherUtil;
+import im.turms.server.common.infra.time.DateTimeUtil;
 import im.turms.server.common.infra.validation.ValidDeviceType;
 import im.turms.server.common.infra.validation.Validator;
 
-import static im.turms.gateway.infra.metrics.MetricNameConst.LOGGED_IN_USERS_COUNTER;
-import static im.turms.gateway.infra.metrics.MetricNameConst.ONLINE_USERS_GAUGE;
+import static im.turms.gateway.infra.metrics.MetricNameConst.TURMS_BUSINESS_USER_LOGGED_IN;
+import static im.turms.gateway.infra.metrics.MetricNameConst.TURMS_BUSINESS_USER_ONLINE;
 
 /**
  * @author James Chen
  */
 @Service
-public class SessionService implements RpcSessionService {
+public class SessionService extends BaseService implements RpcSessionService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SessionService.class);
 
@@ -179,18 +181,18 @@ public class SessionService implements RpcSessionService {
                     newSessionProperties.getClientHeartbeatIntervalSeconds());
             heartbeatManager.setCloseIdleSessionAfterSeconds(
                     newSessionProperties.getCloseIdleSessionAfterSeconds());
-            heartbeatManager.setMinHeartbeatIntervalMillis(
-                    newSessionProperties.getMinHeartbeatIntervalSeconds() * 1000);
-            heartbeatManager.setSwitchProtocolAfterMillis(
-                    newSessionProperties.getSwitchProtocolAfterSeconds() * 1000);
+            heartbeatManager.setMinHeartbeatIntervalNanos(DateTimeUtil
+                    .secondsToNanos(newSessionProperties.getMinHeartbeatIntervalSeconds()));
+            heartbeatManager.setSwitchProtocolAfterNanos(DateTimeUtil
+                    .secondsToNanos(newSessionProperties.getSwitchProtocolAfterSeconds()));
         });
         propertiesManager.addLocalPropertiesChangeListener(this::updateLocalProperties);
 
         MeterRegistry registry = metricsService.getRegistry();
-        loggedInUsersCounter = registry.counter(LOGGED_IN_USERS_COUNTER);
-        registry.gaugeMapSize(ONLINE_USERS_GAUGE, Tags.empty(), userIdToSessionsManager);
+        loggedInUsersCounter = registry.counter(TURMS_BUSINESS_USER_LOGGED_IN);
+        registry.gaugeMapSize(TURMS_BUSINESS_USER_ONLINE, Tags.empty(), userIdToSessionsManager);
 
-        context.addShutdownHook(JobShutdownOrder.CLOSE_SESSIONS, this::destroy);
+        context.addShutdownHook(JobShutdownOrder.CLOSE_SESSIONS, timeoutMillis -> destroy());
     }
 
     private void updateGlobalProperties(TurmsProperties properties) {
@@ -209,16 +211,19 @@ public class SessionService implements RpcSessionService {
                 .getIdentity();
     }
 
-    public Mono<Void> destroy(long timeoutMillis) {
-        heartbeatManager.destroy(timeoutMillis);
+    public Mono<Void> destroy() {
         CloseReason closeReason = CloseReason.get(SessionCloseStatus.SERVER_CLOSED);
-        return closeAllLocalSessions(closeReason).onErrorMap(
-                t -> new RuntimeException("Caught an error while closing local sessions", t))
-                .then();
+        return heartbeatManager.destroy()
+                .then(Mono
+                        .defer(() -> closeAllLocalSessions(closeReason)
+                                .onErrorMap(t -> new RuntimeException(
+                                        "Caught an error while closing local sessions",
+                                        t)))
+                        .then());
     }
 
     public void handleHeartbeatUpdateRequest(UserSession session) {
-        session.setLastHeartbeatRequestTimestampMillis(System.currentTimeMillis());
+        session.setLastHeartbeatRequestTimestampToNow();
     }
 
     public Mono<UserSession> handleLoginRequest(
@@ -592,7 +597,7 @@ public class SessionService implements RpcSessionService {
                     && session.getId() == sessionId
                     && !session.getConnection()
                             .isConnectionRecovering()) {
-                session.setLastHeartbeatRequestTimestampMillis(System.currentTimeMillis());
+                session.setLastHeartbeatRequestTimestampToNow();
                 return session;
             }
         }

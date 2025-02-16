@@ -43,8 +43,8 @@ import im.turms.server.common.access.common.LoopResourcesFactory;
 import im.turms.server.common.access.common.ResponseStatusCode;
 import im.turms.server.common.domain.session.bo.CloseReason;
 import im.turms.server.common.domain.session.bo.SessionCloseStatus;
-import im.turms.server.common.infra.context.JobShutdownOrder;
-import im.turms.server.common.infra.context.TurmsApplicationContext;
+import im.turms.server.common.infra.application.JobShutdownOrder;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.exception.ResponseException;
 import im.turms.server.common.infra.logging.core.logger.Logger;
 import im.turms.server.common.infra.logging.core.logger.LoggerFactory;
@@ -93,8 +93,7 @@ public class UdpRequestDispatcher {
                     .runOn(LoopResourcesFactory.createForServer(ThreadNameConst.GATEWAY_UDP_PREFIX))
                     .metrics(true,
                             () -> new TurmsMicrometerChannelMetricsRecorder(
-                                    MetricNameConst.CLIENT_NETWORK,
-                                    "udp"))
+                                    MetricNameConst.TURMS_GATEWAY_SERVER_UDP))
                     .handle((inbound, outbound) -> {
                         Flux<DatagramPacket> responseFlux = inbound.receiveObject()
                                 .cast(DatagramPacket.class)

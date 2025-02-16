@@ -20,6 +20,7 @@ package im.turms.server.common.storage.mongo.operation;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiPredicate;
@@ -28,6 +29,7 @@ import java.util.stream.Collectors;
 import jakarta.annotation.Nullable;
 
 import com.mongodb.ClientSessionOptions;
+import com.mongodb.MongoNamespace;
 import com.mongodb.TransactionOptions;
 import com.mongodb.client.model.Accumulators;
 import com.mongodb.client.model.Aggregates;
@@ -58,6 +60,7 @@ import com.mongodb.reactivestreams.client.internal.MongoOperationPublisher;
 import com.mongodb.reactivestreams.client.internal.TurmsFindPublisherImpl;
 import org.apache.commons.lang3.StringUtils;
 import org.bson.BsonArray;
+import org.bson.BsonArrayUtil;
 import org.bson.BsonBoolean;
 import org.bson.BsonDocument;
 import org.bson.BsonDocumentWriter;
@@ -137,6 +140,16 @@ public class TurmsMongoOperations implements MongoOperationsSupport {
             new BsonDocument().append("$getField",
                     new BsonDocument().append("field", new BsonString("k"))
                             .append("input", new BsonString("$$field")));
+    private static final BsonDocument FIND_FIELDS_FILTER_INPUT = new BsonDocument(
+            "$map",
+            new BsonDocument()
+                    .append("input", new BsonDocument("$objectToArray", new BsonString("$$ROOT")))
+                    .append("as", new BsonString("a"))
+                    .append("in", new BsonString("$$a.k")));
+
+    // Diagnostics
+    private static final BsonDocument PING_COMMAND =
+            new BsonDocument("ping", BsonPool.BSON_INT32_1);
 
     private final MongoContext context;
     private final Map<Class<?>, MongoOperationPublisher<?>> publisherMap =
@@ -177,6 +190,21 @@ public class TurmsMongoOperations implements MongoOperationsSupport {
     }
 
     @Override
+    public Flux<BsonDocument> findMany(String collectionName, Filter filter) {
+        return findMany(collectionName, filter, null);
+    }
+
+    @Override
+    public Flux<BsonDocument> findMany(
+            String collectionName,
+            Filter filter,
+            @Nullable QueryOptions options) {
+        MongoCollection<BsonDocument> collection = context.getCollection(collectionName);
+        FindPublisher<BsonDocument> source = find(collection, filter, options);
+        return Flux.from(source);
+    }
+
+    @Override
     public <T> Flux<T> findMany(Class<T> clazz, Filter filter) {
         return findMany(clazz, filter, null);
     }
@@ -208,6 +236,36 @@ public class TurmsMongoOperations implements MongoOperationsSupport {
                 QueryOptions.newBuilder(1)
                         .projection(ID_ONLY));
         return Flux.from(publisher);
+    }
+
+    @Override
+    public <T> Mono<List<String>> findFields(Class<T> clazz, Collection<String> includedFields) {
+        MongoCollection<T> collection = context.getCollection(clazz);
+        List<Bson> pipeline = List.of(Aggregates.limit(1),
+                Aggregates.project(new BsonDocument()
+                        .append(DomainFieldName.ID, BsonPool.BSON_INT32_0)
+                        .append("n",
+                                new BsonDocument(
+                                        "$filter",
+                                        new BsonDocument().append("input", FIND_FIELDS_FILTER_INPUT)
+                                                .append("as", new BsonString("n"))
+                                                .append("cond",
+                                                        new BsonDocument(
+                                                                "$in",
+                                                                new BsonArray(
+                                                                        List.of(new BsonString(
+                                                                                "$$n"),
+                                                                                BsonArrayUtil
+                                                                                        .newArray(
+                                                                                                includedFields)))))))));
+        return Mono.from(collection.aggregate(pipeline, Document.class))
+                .map(document -> {
+                    List<String> names = (List<String>) document.get("n");
+                    return names == null
+                            ? Collections.<String>emptyList()
+                            : names;
+                })
+                .defaultIfEmpty(Collections.emptyList());
     }
 
     @Override
@@ -403,7 +461,7 @@ public class TurmsMongoOperations implements MongoOperationsSupport {
         if (values.isEmpty()) {
             return Mono.empty();
         }
-        MongoCollection collection = context.getCollection(values.get(0)
+        MongoCollection collection = context.getCollection(values.getFirst()
                 .getClass());
         Publisher<InsertManyResult> source =
                 collection.insertMany(values, DEFAULT_INSERT_MANY_OPTIONS);
@@ -417,7 +475,7 @@ public class TurmsMongoOperations implements MongoOperationsSupport {
         if (values.isEmpty()) {
             return Mono.empty();
         }
-        MongoCollection collection = context.getCollection(values.get(0)
+        MongoCollection collection = context.getCollection(values.getFirst()
                 .getClass());
         Publisher<InsertManyResult> source = session == null
                 ? collection.insertMany(values, DEFAULT_INSERT_MANY_OPTIONS)
@@ -748,6 +806,23 @@ public class TurmsMongoOperations implements MongoOperationsSupport {
     // Collection
 
     @Override
+    public Flux<String> listCollectionNames() {
+        return Flux.from(context.getDatabase()
+                .listCollectionNames());
+    }
+
+    @Override
+    public Mono<Void> renameCollection(String oldCollectionName, String newCollectionName) {
+        MongoCollection<Document> collection = context.getDatabase()
+                .getCollection(oldCollectionName);
+        MongoNamespace newNamespace = new MongoNamespace(
+                collection.getNamespace()
+                        .getDatabaseName(),
+                newCollectionName);
+        return Mono.from(collection.renameCollection(newNamespace));
+    }
+
+    @Override
     public Mono<Boolean> createCollectionIfNotExists(Class<?> clazz) {
         MongoEntity<?> entity = context.getEntity(clazz);
         BsonDocument jsonSchema = entity.jsonSchema();
@@ -757,24 +832,51 @@ public class TurmsMongoOperations implements MongoOperationsSupport {
                             + entity.collectionName()
                             + "\" because no JSON schema is specified"));
         }
-        return collectionExists(clazz).flatMap(exists -> {
-            if (exists) {
-                return PublisherPool.TRUE;
-            }
-            CreateCollectionOptions options = new CreateCollectionOptions()
-                    .validationOptions(new ValidationOptions().validator(jsonSchema)
-                            .validationAction(ValidationAction.ERROR)
-                            .validationLevel(ValidationLevel.STRICT));
-            Publisher<Void> source = context.getDatabase()
-                    .createCollection(entity.collectionName(), options);
-            return Mono.from(source)
-                    .thenReturn(false)
-                    // https://github.com/turms-im/turms/issues/1010
-                    .onErrorResume(throwable -> MongoExceptionUtil.isErrorOf(throwable,
-                            MongoErrorCodes.NAMESPACE_EXISTS)
-                                    ? PublisherPool.TRUE
-                                    : Mono.error(throwable));
-        });
+        return collectionExists(clazz)
+                .flatMap(exists -> createCollectionIfNotExists0(exists, clazz, jsonSchema, entity));
+    }
+
+    @Override
+    public Mono<Boolean> createCollectionIfNotExists(
+            Class<?> clazz,
+            Collection<String> existingCollectionNames) {
+        MongoEntity<?> entity = context.getEntity(clazz);
+        BsonDocument jsonSchema = entity.jsonSchema();
+        if (jsonSchema == null) {
+            return Mono.error(new RuntimeException(
+                    "Failed to create the collection \""
+                            + entity.collectionName()
+                            + "\" because no JSON schema is specified"));
+        }
+        return createCollectionIfNotExists0(existingCollectionNames
+                .contains(entity.collectionName()), clazz, jsonSchema, entity);
+    }
+
+    private Mono<Boolean> createCollectionIfNotExists0(
+            boolean exists,
+            Class<?> clazz,
+            BsonDocument jsonSchema,
+            MongoEntity<?> entity) {
+        if (exists) {
+            // Always update the JSON schema to ensure the schema is up to date.
+            return updateJsonSchema(clazz,
+                    jsonSchema,
+                    ValidationAction.ERROR,
+                    ValidationLevel.STRICT).then(PublisherPool.TRUE);
+        }
+        CreateCollectionOptions options = new CreateCollectionOptions()
+                .validationOptions(new ValidationOptions().validator(jsonSchema)
+                        .validationAction(ValidationAction.ERROR)
+                        .validationLevel(ValidationLevel.STRICT));
+        Publisher<Void> source = context.getDatabase()
+                .createCollection(entity.collectionName(), options);
+        return Mono.from(source)
+                .thenReturn(false)
+                // https://github.com/turms-im/turms/issues/1010
+                .onErrorResume(throwable -> MongoExceptionUtil.isErrorOf(throwable,
+                        MongoErrorCodes.NAMESPACE_EXISTS)
+                                ? PublisherPool.TRUE
+                                : Mono.error(throwable));
     }
 
     @Override
@@ -806,6 +908,35 @@ public class TurmsMongoOperations implements MongoOperationsSupport {
                 .hasElement();
     }
 
+    @Override
+    public Mono<Void> updateJsonSchema(
+            Class<?> clazz,
+            BsonDocument jsonSchema,
+            ValidationAction action,
+            ValidationLevel level) {
+        String collectionName = context.getEntity(clazz)
+                .collectionName();
+        Publisher<BsonDocument> publisher = context.getDatabase()
+                .runCommand(
+                        new BsonDocument("collMod", new BsonString(collectionName))
+                                .append("validator", jsonSchema)
+                                .append("validationAction", new BsonString(action.getValue()))
+                                .append("validationLevel", new BsonString(level.getValue())),
+                        BsonDocument.class);
+        return Mono.from(publisher)
+                .flatMap(document -> {
+                    int ok = document.get("ok")
+                            .asNumber()
+                            .intValue();
+                    return 1 == ok
+                            ? Mono.empty()
+                            : Mono.error(new RuntimeException(
+                                    "Failed to update the JSON schema of the collection \""
+                                            + collectionName
+                                            + "\""));
+                });
+    }
+
     // Transaction
 
     @Override
@@ -818,6 +949,16 @@ public class TurmsMongoOperations implements MongoOperationsSupport {
                 ClientSession::commitTransaction,
                 (session, t) -> session.abortTransaction(),
                 ClientSession::commitTransaction);
+    }
+
+    // Health Check
+
+    @Override
+    public Mono<Boolean> ping() {
+        return Mono.from(context.getDatabase()
+                .runCommand(PING_COMMAND, BsonDocument.class))
+                .map(document -> document.getNumber("ok")
+                        .intValue() == 1);
     }
 
     // Balancer

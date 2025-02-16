@@ -27,10 +27,10 @@ export default class MessageService {
             return [];
         }
         const userIds = [];
-        let matches;
+        let matches: RegExpExecArray;
         while ((matches = regex.exec(message.text))) {
             const match = matches[1];
-            if (!isNaN(match)) {
+            if (Number.isInteger(parseInt(match))) {
                 userIds.push(match);
             }
         }
@@ -150,10 +150,10 @@ export default class MessageService {
         burnAfter?: number,
         preMessageId?: string
     }): Promise<Response<string>> {
-        if (Validator.isFalsy(targetId)) {
-            return ResponseError.notFalsyPromise('targetId');
+        if (null == targetId) {
+            return ResponseError.notNullPromise('targetId');
         }
-        if (Validator.isFalsy(text) && Validator.isFalsy(records)) {
+        if (null == text && null == records) {
             return ResponseError.illegalParamPromise('text and records must not all be null');
         }
         return this._turmsClient.driver.send({
@@ -164,8 +164,10 @@ export default class MessageService {
                 text,
                 records: records || [],
                 burnAfter,
-                preMessageId
-            }
+                preMessageId,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n, data => NotificationUtil.getLongOrThrow(data)));
     }
 
@@ -202,19 +204,21 @@ export default class MessageService {
         isGroupMessage: boolean,
         targetId: string
     }): Promise<Response<string>> {
-        if (Validator.isFalsy(messageId)) {
-            return ResponseError.notFalsyPromise('messageId');
+        if (null == messageId) {
+            return ResponseError.notNullPromise('messageId');
         }
-        if (Validator.isFalsy(targetId)) {
-            return ResponseError.notFalsyPromise('targetId');
+        if (null == targetId) {
+            return ResponseError.notNullPromise('targetId');
         }
         return this._turmsClient.driver.send({
             createMessageRequest: {
                 messageId,
                 groupId: isGroupMessage ? targetId : undefined,
                 recipientId: !isGroupMessage ? targetId : undefined,
-                records: []
-            }
+                records: [],
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n, data => NotificationUtil.getLongOrThrow(data)));
     }
 
@@ -256,18 +260,20 @@ export default class MessageService {
         text?: string,
         records?: Uint8Array[]
     }): Promise<Response<void>> {
-        if (Validator.isFalsy(messageId)) {
-            return ResponseError.notFalsyPromise('messageId');
+        if (null == messageId) {
+            return ResponseError.notNullPromise('messageId');
         }
-        if (Validator.areAllFalsy(text, records)) {
+        if (Validator.areAllNull(text, records)) {
             return Promise.resolve(Response.nullValue());
         }
         return this._turmsClient.driver.send({
             updateMessageRequest: {
                 messageId,
                 text,
-                records: records || []
-            }
+                records: records || [],
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n));
     }
 
@@ -324,8 +330,10 @@ export default class MessageService {
                 deliveryDateEnd: DataParser.getDateTimeStr(deliveryDateEnd),
                 maxCount,
                 descending: descending != null && descending ? true : null,
-                withTotal: false
-            }
+                withTotal: false,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n, data => NotificationUtil.transformOrEmpty(data.messages?.messages)));
     }
 
@@ -382,8 +390,10 @@ export default class MessageService {
                 deliveryDateEnd: DataParser.getDateTimeStr(deliveryDateEnd),
                 maxCount,
                 descending: descending != null && descending ? true : null,
-                withTotal: true
-            }
+                withTotal: true,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n, data => NotificationUtil.transformOrEmpty(data.messagesWithTotalList?.messagesWithTotalList)));
     }
 
@@ -416,15 +426,17 @@ export default class MessageService {
         messageId: string,
         recallDate?: Date
     }): Promise<Response<void>> {
-        if (Validator.isFalsy(messageId)) {
-            return ResponseError.notFalsyPromise('messageId');
+        if (null == messageId) {
+            return ResponseError.notNullPromise('messageId');
         }
         return this._turmsClient.driver.send({
             updateMessageRequest: {
                 messageId,
                 recallDate: DataParser.getDateTimeStr(recallDate),
-                records: []
-            }
+                records: [],
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n));
     }
 
@@ -449,11 +461,12 @@ export default class MessageService {
         longitude: number,
         details?: { [_: string]: string }
     }): Uint8Array {
-        Validator.throwIfAnyFalsy(latitude, longitude);
+        Validator.throwIfAnyNull(latitude, longitude);
         return UserLocation.encode({
             latitude,
             longitude,
-            details: details || {}
+            details: details || {},
+            customAttributes: []
         }).finish();
     }
 
@@ -468,14 +481,15 @@ export default class MessageService {
         format?: string,
         size?: number
     }): Uint8Array {
-        Validator.throwIfAnyFalsy(url);
+        Validator.throwIfAnyNull(url);
         return AudioFile.encode({
             description: {
                 url,
                 duration,
                 format,
-                size,
-            }
+                size
+            },
+            customAttributes: []
         }).finish();
     }
 
@@ -484,9 +498,10 @@ export default class MessageService {
     }: {
         data: ArrayBuffer
     }): Uint8Array {
-        Validator.throwIfAnyFalsy(data);
+        Validator.throwIfAnyNull(data);
         return AudioFile.encode({
-            data: new Uint8Array(data)
+            data: new Uint8Array(data),
+            customAttributes: []
         }).finish();
     }
 
@@ -501,14 +516,15 @@ export default class MessageService {
         format?: string,
         size?: number
     }): Uint8Array {
-        Validator.throwIfAnyFalsy(url);
+        Validator.throwIfAnyNull(url);
         return VideoFile.encode({
             description: {
                 url,
                 duration,
                 format,
-                size,
-            }
+                size
+            },
+            customAttributes: []
         }).finish();
     }
 
@@ -517,9 +533,10 @@ export default class MessageService {
     }: {
         data: ArrayBuffer
     }): Uint8Array {
-        Validator.throwIfAnyFalsy(data);
+        Validator.throwIfAnyNull(data);
         return VideoFile.encode({
-            data: new Uint8Array(data)
+            data: new Uint8Array(data),
+            customAttributes: []
         }).finish();
     }
 
@@ -528,9 +545,10 @@ export default class MessageService {
     }: {
         data: ArrayBuffer
     }): Uint8Array {
-        Validator.throwIfAnyFalsy(data);
+        Validator.throwIfAnyNull(data);
         return ImageFile.encode({
-            data: new Uint8Array(data)
+            data: new Uint8Array(data),
+            customAttributes: []
         }).finish();
     }
 
@@ -545,14 +563,15 @@ export default class MessageService {
         imageSize?: number,
         original?: boolean
     }): Uint8Array {
-        Validator.throwIfAnyFalsy(url);
+        Validator.throwIfAnyNull(url);
         return ImageFile.encode({
             description: {
                 url,
                 fileSize,
                 imageSize,
                 original
-            }
+            },
+            customAttributes: []
         }).finish();
     }
 
@@ -561,9 +580,10 @@ export default class MessageService {
     }: {
         data: ArrayBuffer
     }): Uint8Array {
-        Validator.throwIfAnyFalsy(data);
+        Validator.throwIfAnyNull(data);
         return File.encode({
-            data: new Uint8Array(data)
+            data: new Uint8Array(data),
+            customAttributes: []
         }).finish();
     }
 
@@ -576,13 +596,14 @@ export default class MessageService {
         format?: string,
         size?: number
     }): Uint8Array {
-        Validator.throwIfAnyFalsy(url);
+        Validator.throwIfAnyNull(url);
         return File.encode({
             description: {
                 url,
                 format,
                 size
-            }
+            },
+            customAttributes: []
         }).finish();
     }
 
@@ -615,7 +636,8 @@ export default class MessageService {
             records: request.records,
             senderId: requesterId,
             groupId: request.groupId,
-            recipientId: request.recipientId
+            recipientId: request.recipientId,
+            customAttributes: []
         };
     }
 }

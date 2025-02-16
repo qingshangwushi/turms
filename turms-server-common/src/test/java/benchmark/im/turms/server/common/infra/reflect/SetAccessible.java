@@ -39,7 +39,6 @@ import im.turms.server.common.infra.reflect.ReflectionUtil;
  *
  * @author James Chen
  */
-
 @Fork(value = 2, jvmArgsAppend = "--add-opens=java.base/java.lang=ALL-UNNAMED")
 @Warmup(iterations = 5, time = 1)
 @Measurement(iterations = 5, time = 2)

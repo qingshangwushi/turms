@@ -30,7 +30,7 @@ import io.netty.buffer.PooledByteBufAllocator;
 
 import im.turms.server.common.infra.lang.NumberFormatter;
 import im.turms.server.common.infra.lang.StringUtil;
-import im.turms.server.common.infra.time.DateUtil;
+import im.turms.server.common.infra.time.DateTimeUtil;
 
 /**
  * @author James Chen
@@ -47,7 +47,7 @@ public class ThreadDumpFormatter {
     private static final byte[] NONE = StringUtil.getBytes("\t- None\n");
     private static final byte[] OWNED_BY = StringUtil.getBytes(" owned by \"");
     private static final byte[] PARKING_TO_WAIT_FOR =
-            StringUtil.getBytes("\t- parking to wait for %s\n");
+            StringUtil.getBytes("\t- parking to wait for ");
     private static final byte[] THREAD = StringUtil.getBytes(" - Thread t@");
     private static final byte[] THREAD_STATE_CLASS_NAME =
             StringUtil.getBytes(Thread.State.class.getCanonicalName());
@@ -72,7 +72,7 @@ public class ThreadDumpFormatter {
 
     public static ByteBuf format(ThreadInfo[] threads) {
         ByteBuf buffer = PooledByteBufAllocator.DEFAULT.directBuffer(threads.length * 512);
-        buffer.writeBytes(DateUtil.toBytes(System.currentTimeMillis()))
+        buffer.writeBytes(DateTimeUtil.toBytes(System.currentTimeMillis()))
                 .writeByte('\n')
                 .writeBytes(FULL_THREAD_DUMP)
                 .writeByte('\n');

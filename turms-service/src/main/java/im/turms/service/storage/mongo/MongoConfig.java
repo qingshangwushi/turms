@@ -27,14 +27,14 @@ import org.springframework.context.annotation.Configuration;
 import im.turms.server.common.domain.admin.po.Admin;
 import im.turms.server.common.domain.admin.po.AdminRole;
 import im.turms.server.common.domain.user.po.User;
-import im.turms.server.common.infra.context.TurmsApplicationContext;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.property.TurmsPropertiesManager;
-import im.turms.server.common.infra.property.env.service.env.database.AdminMongoProperties;
-import im.turms.server.common.infra.property.env.service.env.database.ConferenceMongoProperties;
-import im.turms.server.common.infra.property.env.service.env.database.ConversationMongoProperties;
-import im.turms.server.common.infra.property.env.service.env.database.GroupMongoProperties;
-import im.turms.server.common.infra.property.env.service.env.database.MessageMongoProperties;
-import im.turms.server.common.infra.property.env.service.env.database.UserMongoProperties;
+import im.turms.server.common.infra.property.env.service.env.mongo.AdminMongoProperties;
+import im.turms.server.common.infra.property.env.service.env.mongo.ConferenceMongoProperties;
+import im.turms.server.common.infra.property.env.service.env.mongo.ConversationMongoProperties;
+import im.turms.server.common.infra.property.env.service.env.mongo.GroupMongoProperties;
+import im.turms.server.common.infra.property.env.service.env.mongo.MessageMongoProperties;
+import im.turms.server.common.infra.property.env.service.env.mongo.UserMongoProperties;
 import im.turms.server.common.storage.mongo.BaseMongoConfig;
 import im.turms.server.common.storage.mongo.TurmsMongoClient;
 import im.turms.server.common.storage.mongo.operation.MongoCollectionOptions;
@@ -51,10 +51,10 @@ import im.turms.service.domain.group.po.GroupType;
 import im.turms.service.domain.group.po.GroupVersion;
 import im.turms.service.domain.message.po.Message;
 import im.turms.service.domain.user.po.UserFriendRequest;
-import im.turms.service.domain.user.po.UserPermissionGroup;
 import im.turms.service.domain.user.po.UserRelationship;
 import im.turms.service.domain.user.po.UserRelationshipGroup;
 import im.turms.service.domain.user.po.UserRelationshipGroupMember;
+import im.turms.service.domain.user.po.UserRole;
 import im.turms.service.domain.user.po.UserVersion;
 
 /**
@@ -96,14 +96,13 @@ public class MongoConfig extends BaseMongoConfig {
                 MongoCollectionOptions.of(User.class, writeConcern.getUser()),
                 MongoCollectionOptions.of(UserFriendRequest.class,
                         writeConcern.getUserFriendRequest()),
-                MongoCollectionOptions.of(UserPermissionGroup.class,
-                        writeConcern.getUserPermissionGroup()),
                 MongoCollectionOptions.of(UserRelationship.class,
                         writeConcern.getUserRelationship()),
                 MongoCollectionOptions.of(UserRelationshipGroup.class,
                         writeConcern.getUserRelationshipGroup()),
                 MongoCollectionOptions.of(UserRelationshipGroupMember.class,
                         writeConcern.getUserRelationshipGroupMember()),
+                MongoCollectionOptions.of(UserRole.class, writeConcern.getUserRole()),
                 MongoCollectionOptions.of(UserVersion.class, writeConcern.getUserVersion()));
         return mongoClient;
     }

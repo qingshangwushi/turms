@@ -22,6 +22,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import jakarta.annotation.Nullable;
 import jakarta.validation.constraints.NotNull;
 
@@ -31,9 +32,10 @@ import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 
 import im.turms.server.common.access.client.dto.ClientMessagePool;
 import im.turms.server.common.access.client.dto.constant.DeviceType;
@@ -46,6 +48,8 @@ import im.turms.server.common.access.servicerequest.dispatcher.IServiceRequestDi
 import im.turms.server.common.access.servicerequest.dto.ServiceRequest;
 import im.turms.server.common.access.servicerequest.dto.ServiceResponse;
 import im.turms.server.common.domain.blocklist.service.BlocklistService;
+import im.turms.server.common.infra.application.JobShutdownOrder;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.collection.CollectionUtil;
 import im.turms.server.common.infra.collection.FastEnumMap;
 import im.turms.server.common.infra.exception.IncompatibleInternalChangeException;
@@ -56,15 +60,17 @@ import im.turms.server.common.infra.healthcheck.ServiceAvailability;
 import im.turms.server.common.infra.lang.ByteArrayWrapper;
 import im.turms.server.common.infra.logging.core.logger.Logger;
 import im.turms.server.common.infra.logging.core.logger.LoggerFactory;
+import im.turms.server.common.infra.message.OutboundMessageManager;
 import im.turms.server.common.infra.plugin.PluginManager;
 import im.turms.server.common.infra.property.TurmsPropertiesManager;
 import im.turms.server.common.infra.proto.ProtoDecoder;
 import im.turms.server.common.infra.proto.ProtoEncoder;
+import im.turms.server.common.infra.time.DateTimeUtil;
 import im.turms.server.common.infra.tracing.TracingCloseableContext;
 import im.turms.server.common.infra.tracing.TracingContext;
 import im.turms.service.access.servicerequest.dto.ClientRequest;
 import im.turms.service.access.servicerequest.dto.RequestHandlerResult;
-import im.turms.service.domain.message.service.OutboundMessageService;
+import im.turms.service.domain.observation.service.MetricsService;
 import im.turms.service.infra.logging.ApiLoggingContext;
 import im.turms.service.infra.logging.ClientApiLogging;
 import im.turms.service.infra.plugin.extension.ClientRequestTransformer;
@@ -73,13 +79,14 @@ import im.turms.service.infra.plugin.extension.RequestHandlerResultHandler;
 import static im.turms.server.common.access.client.dto.request.TurmsRequest.KindCase.CREATE_SESSION_REQUEST;
 import static im.turms.server.common.access.client.dto.request.TurmsRequest.KindCase.DELETE_SESSION_REQUEST;
 import static im.turms.server.common.access.client.dto.request.TurmsRequest.KindCase.KIND_NOT_SET;
-import static im.turms.server.common.infra.metrics.CommonMetricNameConst.CLIENT_REQUEST;
-import static im.turms.server.common.infra.metrics.CommonMetricNameConst.CLIENT_REQUEST_TAG_TYPE;
+import static im.turms.server.common.infra.metrics.CommonMetricNameConst.TURMS_CLIENT_REQUEST;
+import static im.turms.server.common.infra.metrics.CommonMetricNameConst.TURMS_CLIENT_REQUEST_PENDING;
+import static im.turms.server.common.infra.metrics.CommonMetricNameConst.TURMS_CLIENT_REQUEST_TAG_TYPE;
 
 /**
  * @author James Chen
  */
-@Service
+@Component
 public class ServiceRequestDispatcher implements IServiceRequestDispatcher {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ServiceRequestDispatcher.class);
@@ -91,11 +98,14 @@ public class ServiceRequestDispatcher implements IServiceRequestDispatcher {
 
     private final ApiLoggingContext apiLoggingContext;
     private final BlocklistService blocklistService;
+    private final OutboundMessageManager outboundMessageManager;
     private final ServerStatusManager serverStatusManager;
-    private final OutboundMessageService outboundMessageService;
     private final PluginManager pluginManager;
 
     private final FastEnumMap<TurmsRequest.KindCase, ClientRequestHandler> requestTypeToHandler;
+
+    private final AtomicInteger pendingRequestCount;
+    private volatile Runnable onAllRequestsHandled;
 
     static {
         try {
@@ -120,17 +130,19 @@ public class ServiceRequestDispatcher implements IServiceRequestDispatcher {
     }
 
     public ServiceRequestDispatcher(
+            TurmsApplicationContext applicationContext,
             ApiLoggingContext apiLoggingContext,
             ApplicationContext context,
             BlocklistService blocklistService,
+            MetricsService metricsService,
+            OutboundMessageManager outboundMessageManager,
             ServerStatusManager serverStatusManager,
-            OutboundMessageService outboundMessageService,
             PluginManager pluginManager,
             TurmsPropertiesManager propertiesManager) {
         this.apiLoggingContext = apiLoggingContext;
         this.blocklistService = blocklistService;
+        this.outboundMessageManager = outboundMessageManager;
         this.serverStatusManager = serverStatusManager;
-        this.outboundMessageService = outboundMessageService;
         this.pluginManager = pluginManager;
         Set<TurmsRequest.KindCase> disabledEndpoints = propertiesManager.getLocalProperties()
                 .getService()
@@ -146,6 +158,20 @@ public class ServiceRequestDispatcher implements IServiceRequestDispatcher {
                                 + requestType);
             }
         }
+        pendingRequestCount = metricsService.getRegistry()
+                .gauge(TURMS_CLIENT_REQUEST_PENDING, new AtomicInteger());
+        applicationContext.addShutdownHook(JobShutdownOrder.WAIT_FOR_PENDING_REQUESTS,
+                timeoutMillis -> {
+                    if (pendingRequestCount.get() == 0) {
+                        return Mono.empty();
+                    }
+                    Sinks.One<Void> sink = Sinks.one();
+                    this.onAllRequestsHandled = sink::tryEmitEmpty;
+                    if (pendingRequestCount.get() == 0) {
+                        return Mono.empty();
+                    }
+                    return sink.asMono();
+                });
     }
 
     private FastEnumMap<TurmsRequest.KindCase, ClientRequestHandler> getMappings(
@@ -193,10 +219,13 @@ public class ServiceRequestDispatcher implements IServiceRequestDispatcher {
     @Override
     public Mono<ServiceResponse> dispatch(TracingContext context, ServiceRequest serviceRequest) {
         ByteBuf requestBuffer = serviceRequest.getTurmsRequestBuffer();
+        pendingRequestCount.incrementAndGet();
         try {
             requestBuffer.touch(serviceRequest);
-            return dispatch0(context, serviceRequest);
+            return dispatch0(context, serviceRequest)
+                    .doFinally(unused -> onPendingRequestHandled());
         } catch (Exception e) {
+            onPendingRequestHandled();
             LOGGER.error("Failed to handle the request: {}", serviceRequest, e);
             return Mono.just(
                     ServiceResponse.of(ResponseStatusCode.SERVER_INTERNAL_ERROR, e.toString()));
@@ -207,6 +236,7 @@ public class ServiceRequestDispatcher implements IServiceRequestDispatcher {
 
     private Mono<ServiceResponse> dispatch0(TracingContext context, ServiceRequest serviceRequest) {
         long requestTime = System.currentTimeMillis();
+        long startTime = System.nanoTime();
         // 1. Validate ServiceResponse
         Long userId = serviceRequest.getUserId();
         DeviceType deviceType = serviceRequest.getDeviceType();
@@ -310,8 +340,8 @@ public class ServiceRequestDispatcher implements IServiceRequestDispatcher {
                             Mono.defer(() -> requestHandler.handle(lastClientRequest))));
             result = result.switchIfEmpty(Mono.defer(() -> handler.handle(lastClientRequest)));
             // 5. Metrics and transform to ServiceResponse
-            return result.name(CLIENT_REQUEST)
-                    .tag(CLIENT_REQUEST_TAG_TYPE, requestType.name())
+            return result.name(TURMS_CLIENT_REQUEST)
+                    .tag(TURMS_CLIENT_REQUEST_TAG_TYPE, requestType.name())
                     .metrics()
                     .defaultIfEmpty(RequestHandlerResult.NO_CONTENT)
                     .doOnEach(signal -> {
@@ -365,7 +395,7 @@ public class ServiceRequestDispatcher implements IServiceRequestDispatcher {
                                     requestSize,
                                     requestTime,
                                     response,
-                                    System.currentTimeMillis() - requestTime);
+                                    (System.nanoTime() - startTime) / DateTimeUtil.NANOS_PER_MILLI);
                         }
                         return response;
                     });
@@ -435,19 +465,19 @@ public class ServiceRequestDispatcher implements IServiceRequestDispatcher {
         Mono<Set<Long>> mono;
         if (forwardNotificationToRequesterOtherOnlineSessions) {
             if (noRecipient) {
-                mono = outboundMessageService.forwardNotification(notificationForRecipients,
+                mono = outboundMessageManager.forwardNotification(notificationForRecipients,
                         notificationByteBuf,
                         requesterId,
                         requesterDevice);
             } else {
                 notificationByteBuf.retain(2);
                 Mono<Set<Long>> notifyRequesterMono =
-                        outboundMessageService.forwardNotification(notificationForRecipients,
+                        outboundMessageManager.forwardNotification(notificationForRecipients,
                                 notificationByteBuf,
                                 requesterId,
                                 requesterDevice);
                 Mono<Set<Long>> notifyRecipientsMono =
-                        outboundMessageService.forwardNotification(notificationForRecipients,
+                        outboundMessageManager.forwardNotification(notificationForRecipients,
                                 notificationByteBuf,
                                 recipients);
                 mono = Flux.mergeDelayError(2, notifyRequesterMono, notifyRecipientsMono)
@@ -456,7 +486,7 @@ public class ServiceRequestDispatcher implements IServiceRequestDispatcher {
                         .doFinally(signal -> notificationByteBuf.release());
             }
         } else {
-            mono = outboundMessageService.forwardNotification(notificationForRecipients,
+            mono = outboundMessageManager.forwardNotification(notificationForRecipients,
                     notificationByteBuf,
                     recipients);
         }
@@ -472,6 +502,16 @@ public class ServiceRequestDispatcher implements IServiceRequestDispatcher {
                                         requesterDevice,
                                         offlineRecipientIds))))
                 .then();
+    }
+
+    private void onPendingRequestHandled() {
+        int count = pendingRequestCount.decrementAndGet();
+        if (count == 0) {
+            Runnable handler = onAllRequestsHandled;
+            if (handler != null) {
+                handler.run();
+            }
+        }
     }
 
 }

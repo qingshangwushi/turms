@@ -43,8 +43,8 @@ import im.turms.server.common.domain.session.bo.UserDeviceSessionInfo;
 import im.turms.server.common.domain.session.bo.UserSessionsStatus;
 import im.turms.server.common.domain.session.service.SessionLocationService;
 import im.turms.server.common.domain.session.service.UserStatusService;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.cluster.node.Node;
-import im.turms.server.common.infra.context.TurmsApplicationContext;
 import im.turms.server.common.infra.exception.ThrowableUtil;
 import im.turms.server.common.infra.lang.ByteArrayWrapper;
 import im.turms.server.common.infra.plugin.PluginManager;
@@ -59,6 +59,7 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -273,6 +274,8 @@ class SessionServiceTests {
         TurmsPropertiesManager propertiesManager = mock(TurmsPropertiesManager.class);
         when(propertiesManager.getGlobalProperties()).thenReturn(properties);
         when(propertiesManager.getLocalProperties()).thenReturn(properties);
+        doCallRealMethod().when(propertiesManager)
+                .notifyAndAddGlobalPropertiesChangeListener(any());
 
         PluginManager pluginManager = mock(PluginManager.class);
         when(pluginManager.invokeExtensionPointsSimultaneously(any(), any(), any()))

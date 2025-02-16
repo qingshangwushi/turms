@@ -24,10 +24,12 @@ import lombok.extern.slf4j.Slf4j;
 import im.turms.server.common.infra.property.TurmsProperties;
 import im.turms.server.common.infra.property.TurmsPropertiesManager;
 import im.turms.server.common.infra.property.env.service.ServiceProperties;
-import im.turms.server.common.infra.property.env.service.env.database.MongoProperties;
 import im.turms.server.common.infra.property.env.service.env.elasticsearch.ElasticsearchClientProperties;
+import im.turms.server.common.infra.property.env.service.env.elasticsearch.ElasticsearchGroupUseCaseProperties;
 import im.turms.server.common.infra.property.env.service.env.elasticsearch.ElasticsearchUseCasesProperties;
+import im.turms.server.common.infra.property.env.service.env.elasticsearch.ElasticsearchUserUseCaseProperties;
 import im.turms.server.common.infra.property.env.service.env.elasticsearch.TurmsElasticsearchProperties;
+import im.turms.server.common.infra.property.env.service.env.mongo.MongoGroupProperties;
 import im.turms.server.common.infra.property.env.service.env.redis.TurmsRedisProperties;
 import im.turms.server.common.testing.BaseIntegrationTest;
 import im.turms.server.common.testing.environment.TestEnvironmentManager;
@@ -70,24 +72,28 @@ public class TestEnvironmentConfig {
                 ElasticsearchClientProperties.builder()
                         .uri(elasticsearchUri)
                         .build();
-        useCasesProperties.getUser()
-                .setClient(elasticsearchClientProperties);
-        useCasesProperties.getGroup()
-                .setClient(elasticsearchClientProperties);
+        ElasticsearchUserUseCaseProperties useCaseProperties = useCasesProperties.getUser();
+        ElasticsearchGroupUseCaseProperties groupUseCaseProperties = useCasesProperties.getGroup();
+        useCaseProperties.setClient(elasticsearchClientProperties);
+        useCaseProperties.getMongo()
+                .setUri(mongoUri);
+        groupUseCaseProperties.setClient(elasticsearchClientProperties);
+        groupUseCaseProperties.getMongo()
+                .setUri(mongoUri);
 
         // Mongo
-        MongoProperties mongoProperties = serviceProperties.getMongo();
-        mongoProperties.getAdmin()
+        MongoGroupProperties mongoGroupProperties = serviceProperties.getMongo();
+        mongoGroupProperties.getAdmin()
                 .setUri(mongoUri);
-        mongoProperties.getUser()
+        mongoGroupProperties.getUser()
                 .setUri(mongoUri);
-        mongoProperties.getGroup()
+        mongoGroupProperties.getGroup()
                 .setUri(mongoUri);
-        mongoProperties.getConversation()
+        mongoGroupProperties.getConversation()
                 .setUri(mongoUri);
-        mongoProperties.getMessage()
+        mongoGroupProperties.getMessage()
                 .setUri(mongoUri);
-        mongoProperties.getConference()
+        mongoGroupProperties.getConference()
                 .setUri(mongoUri);
 
         // Redis

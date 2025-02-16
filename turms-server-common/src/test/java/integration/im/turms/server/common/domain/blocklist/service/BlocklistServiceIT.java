@@ -27,14 +27,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 
 import im.turms.server.common.domain.blocklist.service.BlocklistService;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.cluster.node.Node;
-import im.turms.server.common.infra.context.TurmsApplicationContext;
 import im.turms.server.common.infra.property.TurmsProperties;
 import im.turms.server.common.infra.property.TurmsPropertiesManager;
 import im.turms.server.common.infra.property.env.common.security.BlocklistProperties;
 import im.turms.server.common.infra.property.env.common.security.SecurityProperties;
 import im.turms.server.common.infra.task.TaskManager;
-import im.turms.server.common.storage.redis.CommonRedisConfig;
+import im.turms.server.common.storage.redis.TurmsRedisClient;
+import im.turms.server.common.storage.redis.codec.context.RedisCodecContext;
 import im.turms.server.common.testing.BaseIntegrationTest;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,7 +48,7 @@ import static org.mockito.Mockito.when;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class BlocklistServiceIT extends BaseIntegrationTest {
 
-    private static final long BLOCK_DURATION_SECONDS = 60;
+    private static final long BLOCK_DURATION_MILLIS = 60 * 1000;
     private static final Duration TIMEOUT = Duration.ofSeconds(15);
 
     private static BlocklistService sharedBlocklistService;
@@ -73,7 +74,7 @@ class BlocklistServiceIT extends BaseIntegrationTest {
 
         Set<Long> userIds = Set.of(1L, 2L, 3L);
 
-        sharedBlocklistService.blockUserIds(userIds, BLOCK_DURATION_SECONDS)
+        sharedBlocklistService.blockUserIds(userIds, BLOCK_DURATION_MILLIS)
                 .block(TIMEOUT);
         waitToSync();
 
@@ -131,7 +132,7 @@ class BlocklistServiceIT extends BaseIntegrationTest {
 
         Set<Long> userIds = Set.of(1L, 2L, 3L, 4L, 5L);
 
-        sharedBlocklistService.blockUserIds(userIds, BLOCK_DURATION_SECONDS)
+        sharedBlocklistService.blockUserIds(userIds, BLOCK_DURATION_MILLIS)
                 .block(TIMEOUT);
         waitToSync();
 
@@ -301,12 +302,13 @@ class BlocklistServiceIT extends BaseIntegrationTest {
         String uri = testEnvironmentManager.getRedisUri();
 
         BlocklistService.maxLogQueueSize = maxLogSize;
+        TurmsRedisClient redisClient = new TurmsRedisClient(uri, RedisCodecContext.DEFAULT);
         return new BlocklistService(
                 node,
                 new TaskManager(),
                 mock(TurmsApplicationContext.class),
-                CommonRedisConfig.newIpBlocklistRedisClient(uri),
-                CommonRedisConfig.newUserIdBlocklistRedisClient(uri),
+                redisClient,
+                redisClient,
                 propertiesManager,
                 null);
     }
@@ -315,7 +317,7 @@ class BlocklistServiceIT extends BaseIntegrationTest {
             BlocklistService localBlocklistService,
             long userId,
             String desc) {
-        localBlocklistService.blockUserIds(Set.of(userId), BLOCK_DURATION_SECONDS)
+        localBlocklistService.blockUserIds(Set.of(userId), BLOCK_DURATION_MILLIS)
                 .block(TIMEOUT);
         waitToSync();
         assertThat(localBlocklistService.isUserIdBlocked(userId)).as(desc)
@@ -337,7 +339,7 @@ class BlocklistServiceIT extends BaseIntegrationTest {
             BlocklistService localBlocklistService,
             long userId,
             String desc) {
-        sharedBlocklistService.blockUserIds(Set.of(userId), BLOCK_DURATION_SECONDS)
+        sharedBlocklistService.blockUserIds(Set.of(userId), BLOCK_DURATION_MILLIS)
                 .block(TIMEOUT);
         waitToSync();
         assertThat(localBlocklistService.isUserIdBlocked(userId)).as(desc)

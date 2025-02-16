@@ -41,31 +41,34 @@ public class GroupProperties {
     @Description("Whether to activate a group when created by default")
     @GlobalProperty
     @MutableProperty
-    private boolean activateGroupWhenCreated = true;
+    protected boolean activateGroupWhenCreated = true;
 
     @Description("Whether to allow the group owner to change the group type")
     @GlobalProperty
     @MutableProperty
-    private boolean allowGroupOwnerChangeGroupType = false;
+    protected boolean allowGroupOwnerChangeGroupType = false;
 
     @Description("Whether to delete groups logically by default")
     @GlobalProperty
     @MutableProperty
-    private boolean deleteGroupLogicallyByDefault = true;
+    protected boolean deleteGroupLogicallyByDefault = true;
 
     @Description("The group member cache will expire after the specified seconds. "
             + "If 0, no group member cache")
     @GlobalProperty
     @Min(0)
-    private int memberCacheExpireAfterSeconds = 15;
+    protected int memberCacheExpireAfterSeconds = 15;
 
     @NestedConfigurationProperty
-    private GroupInvitationProperties invitation = new GroupInvitationProperties();
+    protected GroupInfoProperties info = new GroupInfoProperties();
 
     @NestedConfigurationProperty
-    private GroupJoinRequestProperties joinRequest = new GroupJoinRequestProperties();
+    protected GroupInvitationProperties invitation = new GroupInvitationProperties();
 
     @NestedConfigurationProperty
-    private GroupQuestionProperties question = new GroupQuestionProperties();
+    protected GroupJoinRequestProperties joinRequest = new GroupJoinRequestProperties();
+
+    @NestedConfigurationProperty
+    protected GroupQuestionProperties question = new GroupQuestionProperties();
 
 }

@@ -1,40 +1,35 @@
 #ifndef TURMS_CLIENT_DRIVER_TURMS_DRIVER_H
 #define TURMS_CLIENT_DRIVER_TURMS_DRIVER_H
 
-#include <atomic>
 #include <boost/asio/io_context.hpp>
-#include <boost/noncopyable.hpp>
 #include <boost/thread/future.hpp>
 
 #include "turms/client/driver/service/connection_service.h"
 #include "turms/client/driver/service/heartbeat_service.h"
-#include "turms/client/driver/service/message_service.h"
+#include "turms/client/driver/service/protocol_message_service.h"
 #include "turms/client/driver/state_store.h"
 #include "turms/client/model/proto/notification/turms_notification.pb.h"
 #include "turms/client/transport/tcp_metrics.h"
 
-namespace turms {
-namespace client {
-namespace driver {
+namespace turms::client::driver {
 
 class TurmsDriver : private boost::noncopyable, private std::enable_shared_from_this<TurmsDriver> {
    private:
     using TurmsNotification = model::proto::TurmsNotification;
     using TurmsRequest = model::proto::TurmsRequest;
-    using StateStore = driver::StateStore;
     using ConnectionService = service::ConnectionService;
     using HeartbeatService = service::HeartbeatService;
-    using MessageService = service::MessageService;
+    using ProtocolMessageService = service::ProtocolMessageService;
     using TcpMetrics = transport::TcpMetrics;
 
    public:
     TurmsDriver(const std::shared_ptr<boost::asio::io_context>& ioContext,
-                const boost::optional<std::string>& host,
-                const boost::optional<int>& port,
-                const boost::optional<int>& connectTimeoutMillis,
-                const boost::optional<int>& requestTimeoutMillis,
-                const boost::optional<int>& minRequestIntervalMillis,
-                const boost::optional<int>& heartbeatIntervalMillis);
+                const std::optional<std::string>& host,
+                const std::optional<int>& port,
+                const std::optional<int>& connectTimeoutMillis,
+                const std::optional<int>& requestTimeoutMillis,
+                const std::optional<int>& minRequestIntervalMillis,
+                const std::optional<int>& heartbeatIntervalMillis);
 
     // Close
     auto close() -> boost::future<void>;
@@ -51,16 +46,16 @@ class TurmsDriver : private boost::noncopyable, private std::enable_shared_from_
 
     // Connection Service
 
-    auto connect(const boost::optional<std::string>& host = boost::none,
-                 const boost::optional<int>& port = boost::none,
-                 const boost::optional<int>& connectTimeoutMillis = boost::none)
+    auto connect(const std::optional<std::string>& host = std::nullopt,
+                 const std::optional<int>& port = std::nullopt,
+                 const std::optional<int>& connectTimeoutMillis = std::nullopt)
         -> boost::future<void>;
 
-    auto disconnect() -> boost::future<void>;
+    auto disconnect() const -> boost::future<void>;
 
     auto isConnected() const -> bool;
 
-    auto connectionMetrics() const -> boost::optional<TcpMetrics>;
+    auto connectionMetrics() const -> std::optional<TcpMetrics>;
 
     // Connection Listeners
 
@@ -80,7 +75,7 @@ class TurmsDriver : private boost::noncopyable, private std::enable_shared_from_
 
     template <typename T>
     auto addNotificationListener(T&& listener) -> void {
-        messageService_.addNotificationListener(std::forward<T>(listener));
+        protocolMessageService_.addNotificationListener(std::forward<T>(listener));
     }
 
     // State
@@ -91,16 +86,14 @@ class TurmsDriver : private boost::noncopyable, private std::enable_shared_from_
     std::shared_ptr<boost::asio::io_context> ioContext_;
     ConnectionService connectionService_;
     HeartbeatService heartbeatService_;
-    MessageService messageService_;
+    ProtocolMessageService protocolMessageService_;
 
     // Intermediary functions as a mediator between services
-    auto onConnectionDisconnected(const boost::optional<std::exception>& e = boost::none) -> void;
+    auto onConnectionDisconnected(const std::optional<std::exception>& e = std::nullopt) -> void;
 
     auto onMessage(const std::vector<uint8_t>& message) -> void;
 };
 
-}  // namespace driver
-}  // namespace client
-}  // namespace turms
+}  // namespace turms::client::driver
 
 #endif  // TURMS_CLIENT_DRIVER_TURMS_DRIVER_H

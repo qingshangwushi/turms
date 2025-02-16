@@ -5,6 +5,10 @@ spring:
 ############################### Turms ###############################
 
 turms:
+  gateway:
+    admin-api:
+      debug:
+        enabled: true
   logging:
     console:
       enabled: true

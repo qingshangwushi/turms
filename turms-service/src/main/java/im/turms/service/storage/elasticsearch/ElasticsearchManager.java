@@ -281,16 +281,17 @@ public class ElasticsearchManager {
             return TurmsMongoClient.of(userUseCaseProperties.getMongo(), "elasticsearch")
                     .flatMap(mongoClient -> {
                         mongoClient.registerEntitiesByClasses(SyncLog.class);
-                        return mongoClient.findMany(SyncLog.class,
-                                Filter.newBuilder(1)
-                                        .inIfNotNullForEnumStrings(SyncLog.Fields.status,
-                                                List.of(SyncStatus.IN_PROGRESS,
-                                                        SyncStatus.COMPLETED)))
-                                .collect(CollectorUtil.toChunkedList())
-                                .flatMap(syncLogs -> performFullSyncs(mongoClient,
-                                        syncLogs,
-                                        isUserDocsFullSyncEnabled,
-                                        isGroupDocsFullSyncEnabled));
+                        return mongoClient.createCollectionIfNotExists(SyncLog.class)
+                                .then(mongoClient.findMany(SyncLog.class,
+                                        Filter.newBuilder(1)
+                                                .inIfNotNullForEnumStrings(SyncLog.Fields.status,
+                                                        List.of(SyncStatus.IN_PROGRESS,
+                                                                SyncStatus.COMPLETED)))
+                                        .collect(CollectorUtil.toChunkedList())
+                                        .flatMap(syncLogs -> performFullSyncs(mongoClient,
+                                                syncLogs,
+                                                isUserDocsFullSyncEnabled,
+                                                isGroupDocsFullSyncEnabled)));
                     });
         }
 
@@ -298,29 +299,33 @@ public class ElasticsearchManager {
                 .of(userUseCaseProperties.getMongo(), "elasticsearch-for-user-docs")
                 .flatMap(mongoClient -> {
                     mongoClient.registerEntitiesByClasses(SyncLog.class);
-                    return mongoClient.findMany(SyncLog.class,
-                            Filter.newBuilder(1)
-                                    .inIfNotNullForEnumStrings(SyncLog.Fields.status,
-                                            List.of(SyncStatus.IN_PROGRESS, SyncStatus.COMPLETED)))
-                            .collect(CollectorUtil.toChunkedList())
-                            .flatMap(syncLogs -> performFullSyncs(mongoClient,
-                                    syncLogs,
-                                    true,
-                                    false));
+                    return mongoClient.createCollectionIfNotExists(SyncLog.class)
+                            .then(mongoClient.findMany(SyncLog.class,
+                                    Filter.newBuilder(1)
+                                            .inIfNotNullForEnumStrings(SyncLog.Fields.status,
+                                                    List.of(SyncStatus.IN_PROGRESS,
+                                                            SyncStatus.COMPLETED)))
+                                    .collect(CollectorUtil.toChunkedList())
+                                    .flatMap(syncLogs -> performFullSyncs(mongoClient,
+                                            syncLogs,
+                                            true,
+                                            false)));
                 }));
         Mono<Void> performFullSyncForGroupDocs = Mono.defer(() -> TurmsMongoClient
                 .of(groupUseCaseProperties.getMongo(), "elasticsearch-for-group-docs")
                 .flatMap(mongoClient -> {
                     mongoClient.registerEntitiesByClasses(SyncLog.class);
-                    return mongoClient.findMany(SyncLog.class,
-                            Filter.newBuilder(1)
-                                    .inIfNotNullForEnumStrings(SyncLog.Fields.status,
-                                            List.of(SyncStatus.IN_PROGRESS, SyncStatus.COMPLETED)))
-                            .collect(CollectorUtil.toChunkedList())
-                            .flatMap(syncLogs -> performFullSyncs(mongoClient,
-                                    syncLogs,
-                                    false,
-                                    true));
+                    return mongoClient.createCollectionIfNotExists(SyncLog.class)
+                            .then(mongoClient.findMany(SyncLog.class,
+                                    Filter.newBuilder(1)
+                                            .inIfNotNullForEnumStrings(SyncLog.Fields.status,
+                                                    List.of(SyncStatus.IN_PROGRESS,
+                                                            SyncStatus.COMPLETED)))
+                                    .collect(CollectorUtil.toChunkedList())
+                                    .flatMap(syncLogs -> performFullSyncs(mongoClient,
+                                            syncLogs,
+                                            false,
+                                            true)));
                 }));
         if (isUserDocsFullSyncEnabled && isGroupDocsFullSyncEnabled) {
             return performFullSyncForUserDocs.then(performFullSyncForGroupDocs);
@@ -715,8 +720,9 @@ public class ElasticsearchManager {
                         null));
         String finalIndex = index;
         return elasticsearchClient.putIndex(index, request)
-                .doOnSuccess(unused -> LOGGER.info("Created an index: "
-                        + finalIndex))
+                .doOnSuccess(unused -> LOGGER.info("Created an index: \""
+                        + finalIndex
+                        + "\""))
                 .onErrorResume(ErrorResponseException.class, e -> {
                     ErrorResponse errorResponse = e.getErrorResponse();
                     if ("resource_already_exists_exception".equals(errorResponse.error()

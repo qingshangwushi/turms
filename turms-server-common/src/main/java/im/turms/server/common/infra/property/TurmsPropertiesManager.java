@@ -34,8 +34,8 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import im.turms.server.common.access.common.ResponseStatusCode;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.cluster.node.Node;
-import im.turms.server.common.infra.context.TurmsApplicationContext;
 import im.turms.server.common.infra.exception.ResponseException;
 import im.turms.server.common.infra.logging.core.logger.Logger;
 import im.turms.server.common.infra.logging.core.logger.LoggerFactory;
@@ -54,6 +54,8 @@ import static im.turms.server.common.infra.property.TurmsPropertiesValidator.val
 public class TurmsPropertiesManager {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TurmsPropertiesManager.class);
+
+    public static final String LATEST_PROFILE_SUFFIX = "-latest";
 
     public final List<Consumer<TurmsProperties>> localPropertiesChangeListeners =
             new LinkedList<>();
@@ -81,10 +83,13 @@ public class TurmsPropertiesManager {
         // Get latestConfigFilePath according to the active profiles
         String activeProfile = applicationContext.getActiveEnvProfile();
         String latestConfigFileName = activeProfile == null
-                ? "application-latest.yaml"
+                ? "application"
+                        + LATEST_PROFILE_SUFFIX
+                        + ".yaml"
                 : "application-"
                         + activeProfile
-                        + "-latest.yaml";
+                        + LATEST_PROFILE_SUFFIX
+                        + ".yaml";
         latestConfigFilePath = Path.of(applicationContext.getConfigDir(), latestConfigFileName);
         InvalidPropertyException exception = validate(localTurmsProperties);
         if (exception != null) {

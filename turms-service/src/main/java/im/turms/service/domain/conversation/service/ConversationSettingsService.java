@@ -39,7 +39,6 @@ import im.turms.server.common.infra.collection.CollectorUtil;
 import im.turms.server.common.infra.exception.ResponseException;
 import im.turms.server.common.infra.property.TurmsProperties;
 import im.turms.server.common.infra.property.TurmsPropertiesManager;
-import im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingProperties;
 import im.turms.server.common.infra.reactor.PublisherPool;
 import im.turms.server.common.infra.validation.Validator;
 import im.turms.server.common.storage.mongo.IMongoCollectionInitializer;
@@ -74,10 +73,9 @@ public class ConversationSettingsService extends CustomSettingService {
     }
 
     private void updateGlobalProperties(TurmsProperties properties) {
-        List<CustomSettingProperties> settings = properties.getService()
-                .getUser()
-                .getAllowedSettings();
-        super.updateGlobalProperties(settings);
+        super.updateGlobalProperties(properties.getService()
+                .getConversation()
+                .getSettings());
     }
 
     public Mono<Boolean> upsertPrivateConversationSettings(
@@ -96,8 +94,7 @@ public class ConversationSettingsService extends CustomSettingService {
         }
         Set<String> immutableSettingsForUpsert = null;
         if (!immutableSettings.isEmpty()) {
-            Set<String> settingsForUpsert = settings.keySet();
-            for (String settingName : settingsForUpsert) {
+            for (String settingName : settings.keySet()) {
                 if (immutableSettings.contains(settingName)) {
                     if (immutableSettingsForUpsert == null) {
                         immutableSettingsForUpsert = new UnifiedSet<>(4);
@@ -114,7 +111,7 @@ public class ConversationSettingsService extends CustomSettingService {
                                     ResponseStatusCode.NOT_RELATED_USER_TO_UPDATE_PRIVATE_CONVERSATION_SETTING));
                         }
                         Map<String, Object> parsedSettings =
-                                parseSettings(settingPropertiesList, settings);
+                                parseSettings(ignoreUnknownSettingsOnUpsert, settings);
                         return conversationSettingsRepository
                                 .upsertSettings(ownerId, userId, parsedSettings)
                                 .map(updateResult -> updateResult.getModifiedCount() > 0
@@ -134,7 +131,7 @@ public class ConversationSettingsService extends CustomSettingService {
                             .flatMap(existingSettings -> {
                                 if (existingSettings.isEmpty()) {
                                     Map<String, Object> parsedSettings =
-                                            parseSettings(settingPropertiesList, settings);
+                                            parseSettings(ignoreUnknownSettingsOnUpsert, settings);
                                     return conversationSettingsRepository
                                             .upsertSettings(ownerId, userId, parsedSettings);
                                 }
@@ -142,7 +139,7 @@ public class ConversationSettingsService extends CustomSettingService {
                                         settingName -> !existingSettings.contains(settingName));
                                 if (finalImmutableSettingsForUpsert.isEmpty()) {
                                     Map<String, Object> parsedSettings =
-                                            parseSettings(settingPropertiesList, settings);
+                                            parseSettings(ignoreUnknownSettingsOnUpsert, settings);
                                     return conversationSettingsRepository
                                             .upsertSettings(ownerId, userId, parsedSettings);
                                 }
@@ -175,8 +172,7 @@ public class ConversationSettingsService extends CustomSettingService {
         }
         Set<String> immutableSettingsForUpsert = null;
         if (!immutableSettings.isEmpty()) {
-            Set<String> settingsForUpsert = settings.keySet();
-            for (String settingName : settingsForUpsert) {
+            for (String settingName : settings.keySet()) {
                 if (immutableSettings.contains(settingName)) {
                     if (immutableSettingsForUpsert == null) {
                         immutableSettingsForUpsert = new UnifiedSet<>(4);
@@ -193,7 +189,7 @@ public class ConversationSettingsService extends CustomSettingService {
                                     ResponseStatusCode.NOT_GROUP_MEMBER_TO_UPDATE_GROUP_CONVERSATION_SETTING));
                         }
                         Map<String, Object> parsedSettings =
-                                parseSettings(settingPropertiesList, settings);
+                                parseSettings(ignoreUnknownSettingsOnUpsert, settings);
                         return conversationSettingsRepository
                                 .upsertSettings(ownerId,
                                         getTargetIdFromGroupId(groupId),
@@ -217,7 +213,7 @@ public class ConversationSettingsService extends CustomSettingService {
                             .flatMap(existingSettings -> {
                                 if (existingSettings.isEmpty()) {
                                     Map<String, Object> parsedSettings =
-                                            parseSettings(settingPropertiesList, settings);
+                                            parseSettings(ignoreUnknownSettingsOnUpsert, settings);
                                     return conversationSettingsRepository.upsertSettings(ownerId,
                                             getTargetIdFromGroupId(groupId),
                                             parsedSettings);
@@ -226,7 +222,7 @@ public class ConversationSettingsService extends CustomSettingService {
                                         settingName -> !existingSettings.contains(settingName));
                                 if (finalImmutableSettingsForUpsert.isEmpty()) {
                                     Map<String, Object> parsedSettings =
-                                            parseSettings(settingPropertiesList, settings);
+                                            parseSettings(ignoreUnknownSettingsOnUpsert, settings);
                                     return conversationSettingsRepository.upsertSettings(ownerId,
                                             getTargetIdFromGroupId(groupId),
                                             parsedSettings);
@@ -261,38 +257,95 @@ public class ConversationSettingsService extends CustomSettingService {
             @Nullable Set<Long> userIds,
             @Nullable Set<Long> groupIds,
             @Nullable Set<String> settingNames) {
-        if (!deletableSettings.isEmpty()) {
-            if (settingNames == null) {
-                return Mono.error(ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
-                        "Cannot delete non-deletable settings: "
-                                + deletableSettings));
+        if (settingNames == null || settingNames.isEmpty()) {
+            if (deletableSettings.isEmpty()) {
+                return PublisherPool.FALSE;
             }
-            for (String settingName : settingNames) {
-                if (!deletableSettings.contains(settingName)) {
-                    return Mono.error(ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
-                            "Cannot delete non-deletable settings: "
-                                    + deletableSettings));
-                }
-            }
-        }
-        int userIdCount = CollectionUtil.getSize(userIds);
-        int groupIdCount = CollectionUtil.getSize(groupIds);
-        if (userIdCount > 0) {
-            List<Long> targetIds;
-            if (groupIdCount > 0) {
-                targetIds = new ArrayList<>(userIdCount + groupIdCount);
-                for (Long groupId : groupIds) {
-                    targetIds.add(getTargetIdFromGroupId(groupId));
-                }
-            } else {
-                targetIds = new ArrayList<>(userIdCount);
-            }
-            targetIds.addAll(userIds);
-            return conversationSettingsRepository.unsetSettings(ownerId, targetIds, settingNames)
+            return conversationSettingsRepository
+                    .unsetSettings(ownerId, getTargetIds(userIds, groupIds), deletableSettings)
                     .map(updateResult -> updateResult.getModifiedCount() > 0);
         }
-        return conversationSettingsRepository.unsetSettings(ownerId, null, settingNames)
+        if (ignoreUnknownSettingsOnDelete) {
+            List<String> nonDeletableSettings = null;
+            for (String settingName : settingNames) {
+                Boolean deletable = settingToDeletable.get(settingName);
+                if (deletable != null && !deletable) {
+                    if (nonDeletableSettings == null) {
+                        nonDeletableSettings = new ArrayList<>(4);
+                    }
+                    nonDeletableSettings.add(settingName);
+                }
+            }
+            if (nonDeletableSettings != null) {
+                nonDeletableSettings.sort(null);
+                return Mono.error(ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
+                        "Cannot delete the non-deletable settings: "
+                                + nonDeletableSettings));
+            }
+            return conversationSettingsRepository
+                    .unsetSettings(ownerId, getTargetIds(userIds, groupIds), settingNames)
+                    .map(updateResult -> updateResult.getModifiedCount() > 0);
+        }
+        List<String> unknownSettings = null;
+        List<String> nonDeletableSettings = null;
+        for (String settingName : settingNames) {
+            Boolean deletable = settingToDeletable.get(settingName);
+            if (deletable == null) {
+                if (unknownSettings == null) {
+                    unknownSettings = new ArrayList<>(4);
+                }
+                unknownSettings.add(settingName);
+            } else if (!deletable) {
+                if (nonDeletableSettings == null) {
+                    nonDeletableSettings = new ArrayList<>(4);
+                }
+                nonDeletableSettings.add(settingName);
+            }
+        }
+        if (unknownSettings != null) {
+            unknownSettings.sort(null);
+            if (nonDeletableSettings != null) {
+                nonDeletableSettings.sort(null);
+                return Mono.error(ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
+                        "Cannot delete unknown settings: "
+                                + unknownSettings
+                                + ", and the non-deletable settings: "
+                                + nonDeletableSettings));
+            } else {
+                return Mono.error(ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
+                        "Cannot delete unknown settings: "
+                                + unknownSettings));
+            }
+        } else if (nonDeletableSettings != null) {
+            nonDeletableSettings.sort(null);
+            return Mono.error(ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
+                    "Cannot delete the non-deletable settings: "
+                            + nonDeletableSettings));
+        }
+        return conversationSettingsRepository
+                .unsetSettings(ownerId, getTargetIds(userIds, groupIds), settingNames)
                 .map(updateResult -> updateResult.getModifiedCount() > 0);
+    }
+
+    @Nullable
+    private List<Long> getTargetIds(Set<Long> userIds, Set<Long> groupIds) {
+        int userIdCount = CollectionUtil.getSize(userIds);
+        int groupIdCount = CollectionUtil.getSize(groupIds);
+        int count = userIdCount + groupIdCount;
+        List<Long> targetIds;
+        if (count == 0) {
+            return null;
+        }
+        targetIds = new ArrayList<>(count);
+        if (userIdCount > 0) {
+            targetIds.addAll(userIds);
+        }
+        if (groupIdCount > 0) {
+            for (Long groupId : groupIds) {
+                targetIds.add(getTargetIdFromGroupId(groupId));
+            }
+        }
+        return targetIds;
     }
 
     public Flux<ConversationSettings> querySettings(

@@ -78,9 +78,10 @@ public class GroupJoinRequestRepository extends ExpirableEntityRepository<GroupJ
         Filter filter = Filter.newBuilder(2)
                 .eq(DomainFieldName.ID, requestId)
                 .eq(GroupJoinRequest.Fields.STATUS, RequestStatus.PENDING);
-        Update update = Update.newBuilder(3)
+        Update update = Update.newBuilder(4)
                 .set(GroupJoinRequest.Fields.STATUS, status)
                 .set(GroupJoinRequest.Fields.RESPONDER_ID, responderId)
+                .set(GroupJoinRequest.Fields.RESPONSE_DATE, new Date())
                 .setIfNotNull(GroupJoinRequest.Fields.REASON, reason);
         return mongoClient.updateOne(session, entityClass, filter, update);
     }
@@ -146,7 +147,9 @@ public class GroupJoinRequestRepository extends ExpirableEntityRepository<GroupJ
         QueryOptions options = QueryOptions.newBuilder(1)
                 .include(GroupJoinRequest.Fields.REQUESTER_ID,
                         GroupJoinRequest.Fields.STATUS,
-                        GroupJoinRequest.Fields.GROUP_ID);
+                        GroupJoinRequest.Fields.GROUP_ID,
+                        // Required by findExpirableDoc
+                        GroupJoinRequest.Fields.CREATION_DATE);
         return findExpirableDoc(filter, options);
     }
 

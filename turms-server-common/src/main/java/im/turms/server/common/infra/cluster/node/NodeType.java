@@ -28,7 +28,10 @@ import lombok.Getter;
 public enum NodeType {
     AI_SERVING("turms-ai-serving", "Turms AI Serving"),
     GATEWAY("turms-gateway", "Turms Gateway"),
-    SERVICE("turms-service", "Turms Service");
+    SERVICE("turms-service", "Turms Service"),
+    // This is a special node type for the tests
+    // that don't belong to any other node type.
+    MOCK("turms-mock", "Turms Mock");
 
     private final String id;
     private final String displayName;

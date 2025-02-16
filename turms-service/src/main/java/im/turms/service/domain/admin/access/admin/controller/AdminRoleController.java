@@ -68,7 +68,7 @@ public class AdminRoleController extends BaseController {
             RequestContext requestContext,
             @RequestBody AddAdminRoleDTO addAdminRoleDTO) {
         Mono<AdminRole> adminRoleMono =
-                adminRoleService.authAndAddAdminRole(requestContext.getAccount(),
+                adminRoleService.authAndAddAdminRole(requestContext.getRequesterId(),
                         addAdminRoleDTO.id(),
                         addAdminRoleDTO.name(),
                         addAdminRoleDTO.permissions() == null
@@ -114,8 +114,8 @@ public class AdminRoleController extends BaseController {
             RequestContext requestContext,
             Set<Long> ids,
             @RequestBody UpdateAdminRoleDTO updateAdminRoleDTO) {
-        Mono<UpdateResult> updateMono = adminRoleService.authAndUpdateAdminRole(
-                requestContext.getAccount(),
+        Mono<UpdateResult> updateMono = adminRoleService.authAndUpdateAdminRoles(
+                requestContext.getRequesterId(),
                 ids,
                 updateAdminRoleDTO.name(),
                 updateAdminRoleDTO.permissions() == null
@@ -131,7 +131,7 @@ public class AdminRoleController extends BaseController {
             RequestContext requestContext,
             Set<Long> ids) {
         Mono<DeleteResult> deleteMono =
-                adminRoleService.authAndDeleteAdminRoles(requestContext.getAccount(), ids);
+                adminRoleService.authAndDeleteAdminRoles(requestContext.getRequesterId(), ids);
         return HttpHandlerResult.deleteResult(deleteMono);
     }
 

@@ -52,12 +52,13 @@ import im.turms.server.common.access.admin.throttle.BaseAdminApiRateLimitingMana
 import im.turms.server.common.access.admin.web.annotation.DeleteMapping;
 import im.turms.server.common.access.common.ResponseStatusCode;
 import im.turms.server.common.domain.admin.bo.AdminAction;
+import im.turms.server.common.domain.admin.constant.AdminConst;
 import im.turms.server.common.domain.admin.service.BaseAdminService;
+import im.turms.server.common.infra.application.JobShutdownOrder;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.cluster.node.Node;
 import im.turms.server.common.infra.cluster.node.NodeType;
 import im.turms.server.common.infra.collection.CollectionUtil;
-import im.turms.server.common.infra.context.JobShutdownOrder;
-import im.turms.server.common.infra.context.TurmsApplicationContext;
 import im.turms.server.common.infra.exception.DuplicateResourceException;
 import im.turms.server.common.infra.exception.IncompatibleInternalChangeException;
 import im.turms.server.common.infra.exception.ResponseException;
@@ -78,7 +79,8 @@ import im.turms.server.common.infra.plugin.extension.AdminActionHandler;
 import im.turms.server.common.infra.property.TurmsProperties;
 import im.turms.server.common.infra.property.TurmsPropertiesManager;
 import im.turms.server.common.infra.property.env.common.adminapi.AdminHttpProperties;
-import im.turms.server.common.infra.property.env.common.adminapi.CommonAdminApiProperties;
+import im.turms.server.common.infra.property.env.common.adminapi.BaseAdminApiProperties;
+import im.turms.server.common.infra.time.DateTimeUtil;
 import im.turms.server.common.infra.time.DurationConst;
 import im.turms.server.common.infra.tracing.TracingCloseableContext;
 import im.turms.server.common.infra.tracing.TracingContext;
@@ -99,7 +101,7 @@ public class HttpRequestDispatcher {
     private static final Logger LOGGER = LoggerFactory.getLogger(HttpRequestDispatcher.class);
 
     private static final String X_REQUEST_ID = "X-Request-ID";
-    private static final Mono<Credentials> CREDENTIALS_ROOT = Mono.just(Credentials.ROOT);
+    private static final Mono<Long> ROOT_ADMIN_ID = Mono.just(AdminConst.ROOT_ADMIN_ID);
 
     private static final Method HANDLE_ADMIN_ACTION_METHOD;
 
@@ -143,12 +145,14 @@ public class HttpRequestDispatcher {
         authenticator = new HttpRequestAuthenticator(adminService);
 
         TurmsProperties properties = propertiesManager.getLocalProperties();
-        CommonAdminApiProperties apiProperties = switch (node.getNodeType()) {
+        BaseAdminApiProperties apiProperties = switch (node.getNodeType()) {
             case AI_SERVING -> properties.getAiServing()
                     .getAdminApi();
             case GATEWAY -> properties.getGateway()
                     .getAdminApi();
             case SERVICE -> properties.getService()
+                    .getAdminApi();
+            case MOCK -> properties.getMockNode()
                     .getAdminApi();
         };
         useAuthentication = apiProperties.isUseAuthentication();
@@ -187,15 +191,21 @@ public class HttpRequestDispatcher {
         }
     }
 
+    public int port() {
+        return server.port();
+    }
+
     // region Properties
     private void updateGlobalProperties(TurmsProperties properties) {
         NodeType nodeType = node.getNodeType();
-        CommonAdminApiProperties apiProperties = switch (nodeType) {
+        BaseAdminApiProperties apiProperties = switch (nodeType) {
             case AI_SERVING -> properties.getAiServing()
                     .getAdminApi();
             case GATEWAY -> properties.getGateway()
                     .getAdminApi();
             case SERVICE -> properties.getService()
+                    .getAdminApi();
+            case MOCK -> properties.getMockNode()
                     .getAdminApi();
         };
         allowDeleteWithoutFilter = nodeType == NodeType.SERVICE
@@ -239,7 +249,8 @@ public class HttpRequestDispatcher {
             } catch (Exception e) {
                 LOGGER.error("Caught an error while notifying the endpoint change listener: "
                         + listener.getClass()
-                                .getName());
+                                .getName(),
+                        e);
             }
         }
     }
@@ -301,6 +312,7 @@ public class HttpRequestDispatcher {
                     .send();
         }
         long requestTime = System.currentTimeMillis();
+        long startTime = System.nanoTime();
         TracingContext tracingContext = new TracingContext();
         RequestContext requestContext = new RequestContext();
         String ip = request.remoteAddress()
@@ -321,13 +333,13 @@ public class HttpRequestDispatcher {
             }
             tryLogAndInvokeHandlers(requestContext.getParams(),
                     tracingContext,
-                    requestContext.getAccount(),
+                    requestContext.getRequesterId(),
                     ip,
                     request.requestId(),
                     requestTime,
                     requestContext.getAction(),
                     requestContext.getParamValues(),
-                    (int) (System.currentTimeMillis() - requestTime),
+                    (int) ((System.nanoTime() - startTime) / DateTimeUtil.NANOS_PER_MILLI),
                     signal.getThrowable());
         })
                 .onErrorResume(t -> {
@@ -402,14 +414,18 @@ public class HttpRequestDispatcher {
                                                 ResponseStatusCode.NO_FILTER_FOR_DELETE_OPERATION))));
                     }
                     // 6. authenticate + authorize
-                    Mono<Credentials> authenticate = useAuthentication
-                            ? authenticator.authenticate(endpoint.parameters(),
-                                    params,
-                                    request.requestHeaders(),
-                                    endpoint.permission())
-                            : CREDENTIALS_ROOT;
-                    return authenticate.flatMap(credentials -> {
-                        requestContext.setAccount(credentials.account());
+                    Mono<Long> authenticate = useAuthentication
+                            ? authenticator
+                                    .authenticate(endpoint.parameters(),
+                                            params,
+                                            request.requestHeaders(),
+                                            endpoint.permission())
+                                    .defaultIfEmpty(Long.MIN_VALUE)
+                            : ROOT_ADMIN_ID;
+                    return authenticate.flatMap(adminId -> {
+                        if (adminId != Long.MIN_VALUE) {
+                            requestContext.setRequesterId(adminId);
+                        }
                         // 7. pass to handler
                         return invokeHandler(endpoint, params);
                     });
@@ -568,7 +584,7 @@ public class HttpRequestDispatcher {
     private void tryLogAndInvokeHandlers(
             @Nullable MethodParameterInfo[] parameters,
             TracingContext context,
-            @Nullable String account,
+            @Nullable Long adminId,
             String ip,
             String requestId,
             long requestTime,
@@ -592,7 +608,7 @@ public class HttpRequestDispatcher {
             }
         }
         AdminAction adminAction =
-                new AdminAction(account, ip, new Date(requestTime), action, params, processingTime);
+                new AdminAction(adminId, ip, new Date(requestTime), action, params, processingTime);
         pluginManager
                 .invokeExtensionPointsSimultaneously(AdminActionHandler.class,
                         HANDLE_ADMIN_ACTION_METHOD,
@@ -600,7 +616,7 @@ public class HttpRequestDispatcher {
                 .subscribe(null, LOGGER::error);
         if (isLogEnabled) {
             try (TracingCloseableContext ignored = context.asCloseable()) {
-                AdminApiLogging.log(account,
+                AdminApiLogging.log(adminId,
                         ip,
                         requestId,
                         requestTime,

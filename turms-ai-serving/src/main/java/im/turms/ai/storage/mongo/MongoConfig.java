@@ -24,9 +24,9 @@ import org.springframework.context.annotation.Configuration;
 
 import im.turms.server.common.domain.admin.po.Admin;
 import im.turms.server.common.domain.admin.po.AdminRole;
-import im.turms.server.common.infra.context.TurmsApplicationContext;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.property.TurmsPropertiesManager;
-import im.turms.server.common.infra.property.env.service.env.database.TurmsMongoProperties;
+import im.turms.server.common.infra.property.env.common.mongo.MongoProperties;
 import im.turms.server.common.storage.mongo.BaseMongoConfig;
 import im.turms.server.common.storage.mongo.IMongoCollectionInitializer;
 import im.turms.server.common.storage.mongo.TurmsMongoClient;
@@ -44,7 +44,7 @@ public class MongoConfig extends BaseMongoConfig {
 
     @Bean
     public TurmsMongoClient adminMongoClient(TurmsPropertiesManager propertiesManager) {
-        TurmsMongoProperties properties = propertiesManager.getLocalProperties()
+        MongoProperties properties = propertiesManager.getLocalProperties()
                 .getAiServing()
                 .getMongo()
                 .getAdmin();

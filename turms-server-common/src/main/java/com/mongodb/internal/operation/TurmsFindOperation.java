@@ -21,6 +21,7 @@ import com.mongodb.ExplainVerbosity;
 import com.mongodb.MongoCommandException;
 import com.mongodb.MongoNamespace;
 import com.mongodb.MongoQueryException;
+import com.mongodb.client.cursor.TimeoutMode;
 import com.mongodb.internal.async.AsyncBatchCursor;
 import com.mongodb.internal.async.SingleResultCallback;
 import com.mongodb.internal.async.function.AsyncCallbackSupplier;
@@ -28,9 +29,8 @@ import com.mongodb.internal.async.function.RetryState;
 import com.mongodb.internal.binding.AsyncReadBinding;
 import com.mongodb.internal.binding.ReadBinding;
 import com.mongodb.internal.connection.NoOpSessionContext;
-import com.mongodb.internal.connection.QueryResult;
-import com.mongodb.internal.session.SessionContext;
 import com.mongodb.lang.Nullable;
+import lombok.Getter;
 import org.bson.BsonDocument;
 import org.bson.BsonValue;
 import org.bson.codecs.Decoder;
@@ -44,7 +44,6 @@ import static com.mongodb.internal.operation.CommandOperationHelper.initialRetry
 import static com.mongodb.internal.operation.ExplainHelper.asExplainCommand;
 import static com.mongodb.internal.operation.OperationHelper.LOGGER;
 import static com.mongodb.internal.operation.OperationHelper.canRetryRead;
-import static com.mongodb.internal.operation.OperationHelper.cursorDocumentToQueryResult;
 import static com.mongodb.internal.operation.OperationReadConcernHelper.appendReadConcernToCommand;
 import static com.mongodb.internal.operation.ServerVersionHelper.MIN_WIRE_VERSION;
 
@@ -56,6 +55,7 @@ public class TurmsFindOperation<T> implements AsyncExplainableReadOperation<Asyn
         ExplainableReadOperation<BatchCursor<T>> {
     private static final String FIRST_BATCH = "firstBatch";
 
+    @Getter
     private final MongoNamespace namespace;
     private final Decoder<T> decoder;
     private final BsonDocument command;
@@ -68,10 +68,6 @@ public class TurmsFindOperation<T> implements AsyncExplainableReadOperation<Asyn
         this.namespace = notNull("namespace", namespace);
         this.decoder = notNull("decoder", decoder);
         this.command = notNull("command", command);
-    }
-
-    public MongoNamespace getNamespace() {
-        return namespace;
     }
 
     public TurmsFindOperation<T> retryReads(final boolean retryReads) {
@@ -88,7 +84,9 @@ public class TurmsFindOperation<T> implements AsyncExplainableReadOperation<Asyn
     public void executeAsync(
             final AsyncReadBinding binding,
             final SingleResultCallback<AsyncBatchCursor<T>> callback) {
-        RetryState retryState = initialRetryState(retryReads);
+        RetryState retryState = initialRetryState(retryReads,
+                binding.getOperationContext()
+                        .getTimeoutContext());
         binding.retain();
         AsyncCallbackSupplier<AsyncBatchCursor<T>> asyncRead = decorateReadWithRetriesAsync(
                 retryState,
@@ -101,17 +99,17 @@ public class TurmsFindOperation<T> implements AsyncExplainableReadOperation<Asyn
                             if (retryState
                                     .breakAndCompleteIfRetryAnd(
                                             () -> !canRetryRead(source.getServerDescription(),
-                                                    binding.getSessionContext()),
+                                                    binding.getOperationContext()),
                                             releasingCallback)) {
                                 return;
                             }
                             SingleResultCallback<AsyncBatchCursor<T>> wrappedCallback =
                                     exceptionTransformingCallback(releasingCallback);
                             createReadCommandAndExecuteAsync(retryState,
-                                    binding,
+                                    binding.getOperationContext(),
                                     source,
                                     namespace.getDatabaseName(),
-                                    getCommandCreator(binding.getSessionContext()),
+                                    getCommandCreator(),
                                     CommandResultDocumentCodec.create(decoder, FIRST_BATCH),
                                     asyncTransformer(),
                                     connection,
@@ -161,10 +159,9 @@ public class TurmsFindOperation<T> implements AsyncExplainableReadOperation<Asyn
                 resultDecoder);
     }
 
-    private CommandOperationHelper.CommandCreator getCommandCreator(
-            final SessionContext sessionContext) {
-        return (serverDescription, connectionDescription) -> {
-            appendReadConcernToCommand(sessionContext,
+    private CommandOperationHelper.CommandCreator getCommandCreator() {
+        return (operationContext, serverDescription, connectionDescription) -> {
+            appendReadConcernToCommand(operationContext.getSessionContext(),
                     connectionDescription.getMaxWireVersion(),
                     command);
             return command;
@@ -172,21 +169,15 @@ public class TurmsFindOperation<T> implements AsyncExplainableReadOperation<Asyn
     }
 
     private AsyncOperationHelper.CommandReadTransformerAsync<BsonDocument, AsyncBatchCursor<T>> asyncTransformer() {
-        return (result, source, connection) -> {
-            QueryResult<T> queryResult = cursorDocumentToQueryResult(result.getDocument("cursor"),
-                    connection.getDescription()
-                            .getServerAddress());
-            return new AsyncQueryBatchCursor<>(
-                    queryResult,
-                    getLimit(),
-                    getBatchSize(),
-                    0,
-                    decoder,
-                    null,
-                    source,
-                    connection,
-                    result);
-        };
+        return (result, source, connection) -> new AsyncCommandBatchCursor<>(
+                TimeoutMode.CURSOR_LIFETIME,
+                result,
+                getBatchSize(),
+                0,
+                decoder,
+                null,
+                source,
+                connection);
     }
 
     private int getBatchSize() {
@@ -198,12 +189,4 @@ public class TurmsFindOperation<T> implements AsyncExplainableReadOperation<Asyn
                 .getValue();
     }
 
-    private int getLimit() {
-        BsonValue limit = command.get("limit");
-        if (limit == null) {
-            return 0;
-        }
-        return limit.asInt32()
-                .getValue();
-    }
 }

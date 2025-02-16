@@ -41,6 +41,7 @@ import im.turms.server.common.access.client.dto.ClientMessagePool;
 import im.turms.server.common.access.client.dto.model.common.LongsWithVersion;
 import im.turms.server.common.access.client.dto.model.user.UserRelationshipsWithVersion;
 import im.turms.server.common.access.common.ResponseStatusCode;
+import im.turms.server.common.domain.common.service.BaseService;
 import im.turms.server.common.infra.collection.CollectionUtil;
 import im.turms.server.common.infra.exception.ResponseException;
 import im.turms.server.common.infra.exception.ResponseExceptionPublisherPool;
@@ -52,7 +53,7 @@ import im.turms.server.common.infra.recycler.ListRecycler;
 import im.turms.server.common.infra.recycler.Recyclable;
 import im.turms.server.common.infra.recycler.SetRecycler;
 import im.turms.server.common.infra.time.DateRange;
-import im.turms.server.common.infra.time.DateUtil;
+import im.turms.server.common.infra.time.DateTimeUtil;
 import im.turms.server.common.infra.time.DurationConst;
 import im.turms.server.common.infra.validation.ValidUserRelationshipKey;
 import im.turms.server.common.infra.validation.Validator;
@@ -74,7 +75,7 @@ import static im.turms.service.storage.mongo.MongoOperationConst.TRANSACTION_RET
  */
 @Service
 @DependsOn(IMongoCollectionInitializer.BEAN_NAME)
-public class UserRelationshipService {
+public class UserRelationshipService extends BaseService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(UserRelationshipService.class);
 
@@ -331,7 +332,7 @@ public class UserRelationshipService {
             @Nullable Date lastUpdatedDate) {
         return userVersionService.queryRelationshipsLastUpdatedDate(ownerId)
                 .flatMap(date -> {
-                    if (DateUtil.isAfterOrSame(lastUpdatedDate, date)) {
+                    if (DateTimeUtil.isAfterOrSame(lastUpdatedDate, date)) {
                         return ResponseExceptionPublisherPool.alreadyUpToUpdate();
                     }
                     Recyclable<Set<Long>> recyclableSet = SetRecycler.obtain();
@@ -369,7 +370,7 @@ public class UserRelationshipService {
             @Nullable Date lastUpdatedDate) {
         return userVersionService.queryRelationshipsLastUpdatedDate(ownerId)
                 .flatMap(date -> {
-                    if (DateUtil.isAfterOrSame(lastUpdatedDate, date)) {
+                    if (DateTimeUtil.isAfterOrSame(lastUpdatedDate, date)) {
                         return ResponseExceptionPublisherPool.alreadyUpToUpdate();
                     }
                     Recyclable<Set<UserRelationship>> recyclableSet = SetRecycler.obtain();
@@ -422,8 +423,8 @@ public class UserRelationshipService {
             Mono<List<Long>> queryRelatedUserIds = queryRelatedUserIds(ownerIds, isBlocked)
                     .collect(Collectors.toCollection(recyclableList2::getValue));
             return Mono.zip(queryRelationshipGroupMemberIds, queryRelatedUserIds)
-                    .flatMapMany(tuple -> Flux
-                            .fromIterable(CollectionUtil.newSet(tuple.getT1(), tuple.getT2())))
+                    .flatMapMany(tuple -> Flux.fromIterable(
+                            CollectionUtil.newSetIntersection(tuple.getT1(), tuple.getT2())))
                     .doFinally(signalType -> {
                         recyclableList1.recycle();
                         recyclableList2.recycle();

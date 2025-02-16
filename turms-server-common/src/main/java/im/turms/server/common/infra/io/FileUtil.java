@@ -20,29 +20,129 @@ package im.turms.server.common.infra.io;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.ClosedWatchServiceException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Set;
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchEvent;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
+import java.util.concurrent.ConcurrentHashMap;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
-import org.springframework.util.AntPathMatcher;
-import org.webjars.WebJarAssetLocator;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
+
+import im.turms.server.common.infra.logging.core.logger.Logger;
+import im.turms.server.common.infra.logging.core.logger.LoggerFactory;
 
 /**
  * @author James Chen
  */
-public class FileUtil {
+public final class FileUtil {
 
-    private static final Set<String> WEB_JAR_ASSETS = new WebJarAssetLocator().listAssets();
-    private static final AntPathMatcher ANT_PATH_MATCHER = new AntPathMatcher();
+    private static final Logger LOGGER = LoggerFactory.getLogger(FileUtil.class);
 
     private static Path tempDir;
+    private static WatchService watchService;
+    private static ConcurrentHashMap<Path, Sinks.Many<FileChangeEvent>> watchedAbsPathToEvents;
 
     private FileUtil() {
+    }
+
+    public static void startWatchService() {
+        if (watchService == null) {
+            synchronized (FileUtil.class) {
+                if (watchService == null) {
+                    watchedAbsPathToEvents = new ConcurrentHashMap<>();
+                    startWatchService0();
+                }
+            }
+        }
+    }
+
+    private static void startWatchService0() {
+        try {
+            watchService = FileSystems.getDefault()
+                    .newWatchService();
+        } catch (IOException e) {
+            throw new InputOutputException("Failed to create the watch service", e);
+        }
+        LOGGER.info("Started the watch service");
+        Thread.ofVirtual()
+                .start(() -> {
+                    boolean continueRunning;
+                    do {
+                        try {
+                            continueRunning = waitAndHandleWatchKey();
+                        } catch (Exception e) {
+                            LOGGER.error("Caught an error while handling a watch key", e);
+                            continueRunning = true;
+                        }
+                    } while (continueRunning);
+                });
+    }
+
+    private static boolean waitAndHandleWatchKey() {
+        WatchKey key;
+        try {
+            key = watchService.take();
+        } catch (InterruptedException e) {
+            try {
+                watchService.close();
+            } catch (Exception ignored) {
+            }
+            LOGGER.info("Stopped the watch service due to an interrupt");
+            return false;
+        } catch (ClosedWatchServiceException e) {
+            LOGGER.info("Stopped the watch service due to the watch service being closed");
+            return false;
+        } catch (Exception e) {
+            LOGGER.error("Failed to take a watch key", e);
+            return true;
+        }
+        if (key == null) {
+            return true;
+        }
+        try {
+            Path watchedPath = (Path) key.watchable();
+            Sinks.Many<FileChangeEvent> sink = watchedAbsPathToEvents.get(watchedPath);
+            if (sink == null) {
+                return true;
+            }
+            for (WatchEvent<?> watchEvent : key.pollEvents()) {
+                Path path = (Path) watchEvent.context();
+                sink.tryEmitNext(new FileChangeEvent(
+                        watchedPath.resolve(path),
+                        (WatchEvent.Kind<Path>) watchEvent.kind()));
+            }
+        } finally {
+            key.reset();
+        }
+        return true;
+    }
+
+    public static Flux<FileChangeEvent> watchDir(Path pathToWatch) {
+        startWatchService();
+        Sinks.Many<FileChangeEvent> eventSink =
+                watchedAbsPathToEvents.computeIfAbsent(pathToWatch.toAbsolutePath()
+                        .normalize(), key -> {
+                            try {
+                                key.register(watchService, StandardWatchEventKinds.ENTRY_MODIFY);
+                            } catch (IOException e) {
+                                throw new InputOutputException(
+                                        "Failed to watch the directory: "
+                                                + key,
+                                        e);
+                            }
+                            return Sinks.many()
+                                    .multicast()
+                                    .directAllOrNothing();
+                        });
+        return eventSink.asFlux();
     }
 
     public static void setTempDir(Path tempDir) {
@@ -77,45 +177,6 @@ public class FileUtil {
                             + filePath,
                     e);
         }
-    }
-
-    public static ByteBuf getWebJarAssetAsBuffer(String resourceNamePattern) {
-        byte[] bytes = getWebJarAssetAsBytes(resourceNamePattern);
-        return Unpooled.unreleasableBuffer(Unpooled.directBuffer(bytes.length)
-                .writeBytes(bytes));
-    }
-
-    public static byte[] getWebJarAssetAsBytes(String resourceNamePattern) {
-        try {
-            return getWebJarAsset(resourceNamePattern).readAllBytes();
-        } catch (IOException e) {
-            throw new InputOutputException(e);
-        }
-    }
-
-    public static InputStream getWebJarAsset(String resourceNamePattern) {
-        resourceNamePattern = WebJarAssetLocator.WEBJARS_PATH_PREFIX
-                + "/"
-                + resourceNamePattern;
-        String resourcePath = null;
-        for (String asset : WEB_JAR_ASSETS) {
-            if (ANT_PATH_MATCHER.match(resourceNamePattern, asset)) {
-                resourcePath = asset;
-            }
-        }
-        if (resourcePath == null) {
-            throw new ResourceNotFoundException(
-                    "No resource found: "
-                            + resourceNamePattern);
-        }
-        InputStream inputStream = FileUtil.class.getClassLoader()
-                .getResourceAsStream(resourcePath);
-        if (inputStream == null) {
-            throw new ResourceNotFoundException(
-                    "Could not find the resource: "
-                            + resourcePath);
-        }
-        return inputStream;
     }
 
     public static long size(Path path) {

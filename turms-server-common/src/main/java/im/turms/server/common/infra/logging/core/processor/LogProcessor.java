@@ -17,9 +17,13 @@
 
 package im.turms.server.common.infra.logging.core.processor;
 
+import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.locks.LockSupport;
 
 import org.jctools.queues.MpscUnboundedArrayQueue;
+import reactor.core.publisher.Mono;
 
 import im.turms.server.common.infra.logging.core.appender.Appender;
 import im.turms.server.common.infra.logging.core.idle.BackoffIdleStrategy;
@@ -28,6 +32,7 @@ import im.turms.server.common.infra.logging.core.logger.LoggerFactory;
 import im.turms.server.common.infra.logging.core.model.LogRecord;
 import im.turms.server.common.infra.netty.ReferenceCountUtil;
 import im.turms.server.common.infra.thread.ThreadNameConst;
+import im.turms.server.common.infra.thread.TurmsThread;
 
 /**
  * Note that we only use one thread to process logs, which means that we don't need to consider the
@@ -37,29 +42,36 @@ import im.turms.server.common.infra.thread.ThreadNameConst;
  */
 public final class LogProcessor {
 
-    private final Thread thread;
+    private final TurmsThread thread;
     private volatile boolean active;
 
     public LogProcessor(MpscUnboundedArrayQueue<LogRecord> recordQueue) {
-        thread = new Thread(() -> drainLogsForever(recordQueue), ThreadNameConst.LOG_PROCESSOR);
-        active = true;
+        thread = TurmsThread
+                .create(ThreadNameConst.LOG_PROCESSOR, false, () -> drainLogsForever(recordQueue));
     }
 
-    public void start() {
+    public synchronized void start() {
         if (thread.getState() == Thread.State.NEW) {
+            active = true;
             thread.start();
         }
     }
 
-    public void waitClose(long timeoutMillis) {
-        active = false;
-        try {
-            thread.join(timeoutMillis);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(
-                    "Caught an error while waiting for the log processor to close",
-                    e);
+    public Mono<Void> close(Duration timeout) {
+        if (!thread.isAlive()) {
+            return Mono.empty();
         }
+        return Mono.defer(() -> {
+            active = false;
+            // If idle, wake it up to take the last chance to write logs.
+            LockSupport.unpark(thread);
+            return thread.onTerminated()
+                    .timeout(timeout)
+                    .onErrorResume(TimeoutException.class, e -> thread.terminate());
+        })
+                .onErrorMap(t -> new RuntimeException(
+                        "Caught an error while closing the log processor",
+                        t));
     }
 
     private void drainLogsForever(MpscUnboundedArrayQueue<LogRecord> recordQueue) {
@@ -74,7 +86,9 @@ public final class LogProcessor {
                     try {
                         appender.append(logRecord);
                     } catch (Exception e) {
-                        InternalLogger.printException(e);
+                        InternalLogger.INSTANCE
+                                .error("Caught an error while appending the log record: "
+                                        + logRecord, e);
                     }
                 }
                 ReferenceCountUtil.safeEnsureReleased(logRecord.data());
@@ -83,12 +97,15 @@ public final class LogProcessor {
                 break;
             }
             idleStrategy.idle();
+            // Don't check if it is active here so that we can have
+            // the last chance to output remaining logs after waking up.
         }
         for (Appender appender : LoggerFactory.getAllAppenders()) {
             try {
                 appender.close();
             } catch (Exception e) {
-                InternalLogger.printException(e);
+                InternalLogger.INSTANCE.error("Caught an error while closing the appender: "
+                        + appender, e);
             }
         }
     }

@@ -14,18 +14,13 @@
 #include "turms/client/model/proto/notification/turms_notification.pb.h"
 #include "turms/client/model/response.h"
 #include "turms/client/model/session_close_info.h"
-#include "turms/client/model/session_close_status.h"
 #include "turms/client/model/user.h"
 #include "turms/client/model/user_location.h"
-#include "turms/client/time/time_util.h"
 
-namespace turms {
-namespace client {
-
+namespace turms::client {
 class TurmsClient;
 
 namespace service {
-
 class UserService : private boost::noncopyable, private std::enable_shared_from_this<UserService> {
    private:
     using time_point = std::chrono::time_point<std::chrono::system_clock>;
@@ -52,9 +47,12 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
     using UserRelationshipGroupsWithVersion = model::proto::UserRelationshipGroupsWithVersion;
     using UserRelationshipsWithVersion = model::proto::UserRelationshipsWithVersion;
     using UserStatus = model::proto::UserStatus;
+    using UserSettings = model::proto::UserSettings;
+
+    using Value = model::proto::Value;
 
    public:
-    UserService(TurmsClient& turmsClient);
+    explicit UserService(TurmsClient& turmsClient);
 
     /**
      * Add an online listener that will be called when the user becomes online.
@@ -78,7 +76,7 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
 
     auto isLoggedIn() const -> bool;
 
-    auto userInfo() const -> const boost::optional<User>&;
+    auto userInfo() const -> const std::optional<User>&;
 
     /**
      * Log in.
@@ -89,7 +87,8 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      *   And the listener registered by addOnOnlineListener() will be called.
      *
      * Related docs:
-     * * Turms Identity and Access Management(https://turms-im.github.io/docs/server/module/identity-access-management.html)
+     * * Turms Identity and Access
+     * Management(https://turms-im.github.io/docs/server/module/identity-access-management.html)
      *
      * @param userId the user ID
      * @param password the user password.
@@ -113,11 +112,11 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * throws with the code ResponseStatusCode::kLoginAuthenticationFailed.
      */
     auto login(int64_t userId,
-               const boost::optional<std::string>& password = boost::none,
+               const std::optional<std::string>& password = std::nullopt,
                DeviceType deviceType = DeviceType::DESKTOP,
                const std::unordered_map<std::string, std::string>& deviceDetails = {},
-               const boost::optional<UserStatus>& onlineStatus = UserStatus::AVAILABLE,
-               const boost::optional<UserLocation>& location = boost::none,
+               const std::optional<UserStatus>& onlineStatus = UserStatus::AVAILABLE,
+               const std::optional<UserLocation>& location = std::nullopt,
                bool storePassword = false) -> boost::future<Response<void>>;
 
     /**
@@ -136,12 +135,15 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * Update the online status of the logged-in user.
      *
      * Notifications:
-     * * If the server property `turms.service.notification.user-online-status-updated.notify-requester-other-online-sessions`
+     * * If the server property
+     * `turms.service.notification.user-online-status-updated.notify-requester-other-online-sessions`
      *   is true （true by default）,
-     *   the server will send an update online status notification to all other online sessions of the logged-in user actively.
-     * * If the server property `turms.service.notification.user-online-status-updated.notify-non-blocked-related-users`,
-     *   is true (false by default),
-     *   the server will send an update online status notification to all non-blocked related users of the logged-in user actively.
+     *   the server will send an update online status notification to all other online sessions of
+     * the logged-in user actively.
+     * * If the server property
+     * `turms.service.notification.user-online-status-updated.notify-non-blocked-related-users`, is
+     * true (false by default), the server will send an update online status notification to all
+     * non-blocked related users of the logged-in user actively.
      *
      * @param onlineStatus the new online status.
      * @throws ResponseException if an error occurs.
@@ -157,7 +159,7 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * @param deviceTypes the device types to disconnect.
      * @throws ResponseException if an error occurs.
      */
-    auto disconnectOnlineDevices(const std::unordered_set<DeviceType>& deviceTypes)
+    auto disconnectOnlineDevices(const std::unordered_set<DeviceType>& deviceTypes) const
         -> boost::future<Response<void>>;
 
     /**
@@ -183,13 +185,26 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * to upload the profile picture and use the returned URL as profilePicture.
      * @param profileAccessStrategy the new profile access strategy.
      * If null, the profile access strategy will not be updated.
+     * @param userDefinedAttributes the user-defined attributes for upsert.
+     * 1. The attributes must have been defined on the server side via
+     * `turms.service.user.info.user-defined-attributes.allowed-attributes`. Otherwise, the method
+     * will throw with ResponseStatusCode::kIllegalArgument if
+     * `turms.service.user.info.user-defined-attributes.ignore-unknown-attributes-on-upsert` is
+     * false (false by default), or silently ignored if it is true.
+     * 2. If trying to update existing immutable attribute, throws with
+     * ResponseStatusCode::kIllegalArgument.
+     * 3. Only public attributes are supported currently, which means other users can find out these
+     * attributes via queryUserProfiles().
+     * @param userDefinedAttributes
      * @throws ResponseException if an error occurs.
      */
-    auto updateProfile(const boost::optional<absl::string_view>& name = boost::none,
-                       const boost::optional<absl::string_view>& intro = boost::none,
-                       const boost::optional<absl::string_view>& profilePicture = boost::none,
-                       const boost::optional<ProfileAccessStrategy>& profileAccessStrategy =
-                           boost::none) -> boost::future<Response<void>>;
+    auto updateProfile(
+        const std::optional<absl::string_view>& name = std::nullopt,
+        const std::optional<absl::string_view>& intro = std::nullopt,
+        const std::optional<absl::string_view>& profilePicture = std::nullopt,
+        const std::optional<ProfileAccessStrategy>& profileAccessStrategy = std::nullopt,
+        const std::unordered_map<std::string, Value>& userDefinedAttributes = {}) const
+        -> boost::future<Response<void>>;
 
     /**
      * Find user profiles.
@@ -202,7 +217,7 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * @throws ResponseException if an error occurs.
      */
     auto queryUserProfiles(const std::unordered_set<int64_t>& userIds,
-                           const boost::optional<time_point>& lastUpdatedDate = boost::none)
+                           const std::optional<time_point>& lastUpdatedDate = std::nullopt) const
         -> boost::future<Response<std::vector<UserInfo>>>;
 
     /**
@@ -218,9 +233,63 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      */
     auto searchUserProfiles(const std::string& name,
                             bool highlight = false,
-                            const boost::optional<int>& skip = boost::none,
-                            const boost::optional<int>& limit = boost::none)
+                            const std::optional<int>& skip = std::nullopt,
+                            const std::optional<int>& limit = std::nullopt) const
         -> boost::future<Response<std::vector<UserInfo>>>;
+
+    /**
+     * Upsert user settings, such as "preferred language", "new message alert", etc.
+     * Note that only the settings specified in `turms.service.user.settings.allowed-settings` can
+     * be upserted.
+     *
+     * Notifications:
+     * * If the server property
+     * `turms.service.notification.user-setting-updated.notify-requester-other-online-sessions` is
+     * true (true by default), the server will send a user settings updated notification to all
+     * other online sessions of the logged-in user actively.
+     *
+     * @param settings the user settings to upsert.
+     * @throws ResponseException if an error occurs.
+     * * If trying to update any existing immutable setting, throws ResponseException with the code
+     * ResponseStatusCode::kIllegalArgument
+     * * If trying to upsert an unknown setting and the server property
+     * `turms.service.user.settings.ignore-unknown-settings-on-upsert` is false (false by default),
+     * throws ResponseException with the code ResponseStatusCode::kIllegalArgument.
+     */
+    auto upsertUserSettings(const std::unordered_map<std::string, Value>& settings) const
+        -> boost::future<Response<void>>;
+
+    /**
+     * Delete user settings.
+     *
+     * Notifications:
+     * * If the server property
+     * `turms.service.notification.user-setting-deleted.notify-requester-other-online-sessions` is
+     * true (true by default), the server will send a user settings deleted notification to all
+     * other online sessions of the logged-in user actively.
+     *
+     * @param names the names of the user settings to delete. If null, all deletable user settings
+     * will be deleted.
+     * @throws ResponseException if an error occurs.
+     * * If trying to delete any non-deletable setting, throws ResponseException with the code
+     * ResponseStatusCode::kIllegalArgument.
+     */
+    auto deleteUserSettings(const std::unordered_set<std::string>& names = {}) const
+        -> boost::future<Response<void>>;
+
+    /**
+     * Find user settings.
+     *
+     * @param names the names of the user settings to query. If null, all user settings will be
+     * returned.
+     * @param lastUpdatedDate the last updated date of user settings stored locally.
+     * The server will only return user settings if a setting has been updated after
+     * lastUpdatedDate.
+     * @throws ResponseException if an error occurs.
+     */
+    auto queryUserSettings(const std::unordered_set<std::string>& names = {},
+                           const std::optional<time_point>& lastUpdatedDate = std::nullopt) const
+        -> boost::future<Response<std::optional<UserSettings>>>;
 
     /**
      * Find nearby users.
@@ -237,11 +306,11 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      */
     auto queryNearbyUsers(float latitude,
                           float longitude,
-                          const boost::optional<int>& maxCount = boost::none,
-                          const boost::optional<int>& maxDistance = boost::none,
-                          const boost::optional<bool>& withCoordinates = boost::none,
-                          const boost::optional<bool>& withDistance = boost::none,
-                          const boost::optional<bool>& withUserInfo = boost::none)
+                          const std::optional<int>& maxCount = std::nullopt,
+                          const std::optional<int>& maxDistance = std::nullopt,
+                          const std::optional<bool>& withCoordinates = std::nullopt,
+                          const std::optional<bool>& withDistance = std::nullopt,
+                          const std::optional<bool>& withUserInfo = std::nullopt) const
         -> boost::future<Response<std::vector<NearbyUser>>>;
 
     /**
@@ -251,7 +320,7 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * @return a list of online status of users.
      * @throws ResponseException if an error occurs.
      */
-    auto queryOnlineStatusesRequest(const std::unordered_set<int64_t>& userIds)
+    auto queryOnlineStatuses(const std::unordered_set<int64_t>& userIds) const
         -> boost::future<Response<std::vector<UserOnlineStatus>>>;
 
     /**
@@ -271,10 +340,10 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * @throws ResponseException if an error occurs.
      */
     auto queryRelationships(const std::unordered_set<int64_t>& relatedUserIds = {},
-                            const boost::optional<bool>& isBlocked = boost::none,
+                            const std::optional<bool>& isBlocked = std::nullopt,
                             const std::unordered_set<int>& groupIndexes = {},
-                            const boost::optional<time_point>& lastUpdatedDate = boost::none)
-        -> boost::future<Response<boost::optional<UserRelationshipsWithVersion>>>;
+                            const std::optional<time_point>& lastUpdatedDate = std::nullopt) const
+        -> boost::future<Response<std::optional<UserRelationshipsWithVersion>>>;
 
     /**
      * Find related user IDs.
@@ -291,10 +360,10 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * Note: The version can be used to update the last updated date stored locally.
      * @throws ResponseException if an error occurs.
      */
-    auto queryRelatedUserIds(const boost::optional<bool>& isBlocked = boost::none,
+    auto queryRelatedUserIds(const std::optional<bool>& isBlocked = std::nullopt,
                              const std::unordered_set<int>& groupIndexes = {},
-                             const boost::optional<time_point>& lastUpdatedDate = boost::none)
-        -> boost::future<Response<boost::optional<LongsWithVersion>>>;
+                             const std::optional<time_point>& lastUpdatedDate = std::nullopt) const
+        -> boost::future<Response<std::optional<LongsWithVersion>>>;
 
     /**
      * Find friends.
@@ -308,8 +377,8 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * @throws ResponseException if an error occurs.
      */
     auto queryFriends(const std::unordered_set<int>& groupIndexes = {},
-                      const boost::optional<time_point>& lastUpdatedDate = boost::none)
-        -> boost::future<Response<boost::optional<UserRelationshipsWithVersion>>>;
+                      const std::optional<time_point>& lastUpdatedDate = std::nullopt) const
+        -> boost::future<Response<std::optional<UserRelationshipsWithVersion>>>;
 
     /**
      * Find blocked users.
@@ -323,17 +392,21 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * @throws ResponseException if an error occurs.
      */
     auto queryBlockedUsers(const std::unordered_set<int>& groupIndexes = {},
-                           const boost::optional<time_point>& lastUpdatedDate = boost::none)
-        -> boost::future<Response<boost::optional<UserRelationshipsWithVersion>>>;
+                           const std::optional<time_point>& lastUpdatedDate = std::nullopt) const
+        -> boost::future<Response<std::optional<UserRelationshipsWithVersion>>>;
 
     /**
      * Create a relationship.
      *
      * Notifications:
-     * * If the server property `turms.service.notification.one-sided-relationship-group-member-added.notify-requester-other-online-sessions`
-     *   is true (true by default), the server will send a new relationship notification to all other online sessions of the logged-in user actively.
-     * * If the server property `turms.service.notification.one-sided-relationship-group-member-added.notify-new-relationship-group-member`,
-     *   is true (false by default), the server will send a new relationship notification to userId actively.
+     * * If the server property
+     * `turms.service.notification.one-sided-relationship-group-member-added.notify-requester-other-online-sessions`
+     *   is true (true by default), the server will send a new relationship notification to all
+     * other online sessions of the logged-in user actively.
+     * * If the server property
+     * `turms.service.notification.one-sided-relationship-group-member-added.notify-new-relationship-group-member`,
+     *   is true (false by default), the server will send a new relationship notification to userId
+     * actively.
      *
      * @param userId the target user ID.
      * @param isBlocked whether to create a blocked relationship.
@@ -345,17 +418,21 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      */
     auto createRelationship(int64_t userId,
                             bool isBlocked,
-                            const boost::optional<int>& groupIndex = boost::none)
+                            const std::optional<int>& groupIndex = std::nullopt) const
         -> boost::future<Response<void>>;
 
     /**
      * Create a friend (non-blocked) relationship.
      *
      * Notifications:
-     * * If the server property `turms.service.notification.one-sided-relationship-group-member-added.notify-requester-other-online-sessions`
-     *   is true (true by default), the server will send a new relationship notification to all other online sessions of the logged-in user actively.
-     * * If the server property `turms.service.notification.one-sided-relationship-group-member-added.notify-new-relationship-group-member`,
-     *   is true (false by default), the server will send a new relationship notification to userId actively.
+     * * If the server property
+     * `turms.service.notification.one-sided-relationship-group-member-added.notify-requester-other-online-sessions`
+     *   is true (true by default), the server will send a new relationship notification to all
+     * other online sessions of the logged-in user actively.
+     * * If the server property
+     * `turms.service.notification.one-sided-relationship-group-member-added.notify-new-relationship-group-member`,
+     *   is true (false by default), the server will send a new relationship notification to userId
+     * actively.
      *
      * @param userId the target user ID.
      * @param groupIndex the target group index in which create the relationship.
@@ -363,17 +440,21 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * @throws ResponseException if an error occurs.
      */
     auto createFriendRelationship(int64_t userId,
-                                  const boost::optional<int>& groupIndex = boost::none)
+                                  const std::optional<int>& groupIndex = std::nullopt) const
         -> boost::future<Response<void>>;
 
     /**
      * Create a blocked user relationship.
      *
      * Notifications:
-     * * If the server property `turms.service.notification.one-sided-relationship-group-member-added.notify-requester-other-online-sessions`
-     *   is true (true by default), the server will send a new relationship notification to all other online sessions of the logged-in user actively.
-     * * If the server property `turms.service.notification.one-sided-relationship-group-member-added.notify-new-relationship-group-member`,
-     *   is true (false by default), the server will send a new relationship notification to userId actively.
+     * * If the server property
+     * `turms.service.notification.one-sided-relationship-group-member-added.notify-requester-other-online-sessions`
+     *   is true (true by default), the server will send a new relationship notification to all
+     * other online sessions of the logged-in user actively.
+     * * If the server property
+     * `turms.service.notification.one-sided-relationship-group-member-added.notify-new-relationship-group-member`,
+     *   is true (false by default), the server will send a new relationship notification to userId
+     * actively.
      *
      * @param userId the target user ID.
      * @param groupIndex the target group index in which create the relationship.
@@ -381,17 +462,20 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * @throws ResponseException if an error occurs.
      */
     auto createBlockedUserRelationship(int64_t userId,
-                                       const boost::optional<int>& groupIndex = boost::none)
+                                       const std::optional<int>& groupIndex = std::nullopt) const
         -> boost::future<Response<void>>;
 
     /**
      * Delete a relationship.
      *
      * Notifications:
-     * * If the server property `turms.service.notification.group-deleted.notify-requester-other-online-sessions`
-     *   is true (true by default), the server will send a delete relationship notification to all other online sessions of the logged-in user actively.
+     * * If the server property
+     * `turms.service.notification.group-deleted.notify-requester-other-online-sessions` is true
+     * (true by default), the server will send a delete relationship notification to all other
+     * online sessions of the logged-in user actively.
      * * If the server property `turms.service.notification.group-deleted.notify-group-members`,
-     *   is true (true by default), the server will send a delete relationship notification to all group members in groups.
+     *   is true (true by default), the server will send a delete relationship notification to all
+     * group members in groups.
      *
      * @param relatedUserId the target user ID.
      * @param deleteGroupIndex the target group index in which delete the relationship.
@@ -400,18 +484,22 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * @throws ResponseException if an error occurs.
      */
     auto deleteRelationship(int64_t relatedUserId,
-                            const boost::optional<int>& deleteGroupIndex = boost::none,
-                            const boost::optional<int>& targetGroupIndex = boost::none)
+                            const std::optional<int>& deleteGroupIndex = std::nullopt,
+                            const std::optional<int>& targetGroupIndex = std::nullopt) const
         -> boost::future<Response<void>>;
 
     /**
      * Update a relationship.
      *
      * Notifications:
-     * * If the server property `turms.service.notification.one-sided-relationship-updated.notify-requester-other-online-sessions`
-     *   is true (true by default), the server will send a update relationship notification to all other online sessions of the logged-in user actively.
-     * * If the server property `turms.service.notification.one-sided-relationship-updated.notify-related-user`,
-     *   is true (false by default), the server will send a update relationship notification to relatedUserId actively.
+     * * If the server property
+     * `turms.service.notification.one-sided-relationship-updated.notify-requester-other-online-sessions`
+     *   is true (true by default), the server will send a update relationship notification to all
+     * other online sessions of the logged-in user actively.
+     * * If the server property
+     * `turms.service.notification.one-sided-relationship-updated.notify-related-user`, is true
+     * (false by default), the server will send a update relationship notification to relatedUserId
+     * actively.
      *
      * @param relatedUserId the target user ID.
      * @param isBlocked whether to update a blocked relationship.
@@ -419,66 +507,82 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * @throws ResponseException if an error occurs.
      */
     auto updateRelationship(int64_t relatedUserId,
-                            const boost::optional<bool>& isBlocked = boost::none,
-                            const boost::optional<int>& groupIndex = boost::none)
+                            const std::optional<bool>& isBlocked = std::nullopt,
+                            const std::optional<int>& groupIndex = std::nullopt) const
         -> boost::future<Response<void>>;
 
     /**
      * Send a friend request.
      *
      * Notifications:
-     * * If the server property `turms.service.notification.friend-request-created.notify-requester-other-online-sessions`,
-     *   is true (true by default), the server will send a new friend request notification to all other online sessions of the logged-in user actively.
-     * * If the server property `turms.service.notification.friend-request-created.notify-friend-request-recipient`,
-     *   is true (true by default), the server will send a new friend request notification to recipientId actively.
+     * * If the server property
+     * `turms.service.notification.friend-request-created.notify-requester-other-online-sessions`,
+     *   is true (true by default), the server will send a new friend request notification to all
+     * other online sessions of the logged-in user actively.
+     * * If the server property
+     * `turms.service.notification.friend-request-created.notify-friend-request-recipient`, is true
+     * (true by default), the server will send a new friend request notification to recipientId
+     * actively.
      *
      * @param recipientId the target user ID.
      * @param content the content of the friend request.
      * @return the request ID.
      * @throws ResponseException if an error occurs.
      */
-    auto sendFriendRequest(int64_t recipientId, const absl::string_view& content)
+    auto sendFriendRequest(int64_t recipientId, absl::string_view content) const
         -> boost::future<Response<int64_t>>;
 
     /**
      * Delete/Recall a friend request.
      *
      * Authorization:
-     * * If the server property `turms.service.user.friend-request.allow-recall-pending-friend-request-by-sender`
-     *   is true (false by default), the logged-in user can recall pending friend requests sent by themselves.
-     *   Otherwise, throws ResponseException with the code ResponseStatusCode::kRecallingFriendRequestIsDisabled.
+     * * If the server property
+     * `turms.service.user.friend-request.allow-recall-pending-friend-request-by-sender` is true
+     * (false by default), the logged-in user can recall pending friend requests sent by themselves.
+     *   Otherwise, throws ResponseException with the code
+     * ResponseStatusCode::kRecallingFriendRequestIsDisabled.
      * * If the logged-in user is not the sender of the friend request,
      *   throws ResponseException with the code ResponseStatusCode::kNotSenderToRecallFriendRequest.
      * * If the friend request is not pending (e.g. expired, accepted, deleted, etc),
      *   throws ResponseException with the code ResponseStatusCode::kRecallNonPendingFriendRequest.
      *
      * Notifications:
-     * * If the server property `turms.service.notification.friend-request-recalled.notify-requester-other-online-sessions`
-     *   is true (true by default), the server will send a delete friend request notification to all other online sessions of the logged-in user actively.
-     * * If the server property `turms.service.notification.friend-request-recalled.notify-friend-request-recipient`
-     *   is true (true by default), the server will send a delete friend request notification to the recipient of the friend request actively.
+     * * If the server property
+     * `turms.service.notification.friend-request-recalled.notify-requester-other-online-sessions`
+     *   is true (true by default), the server will send a delete friend request notification to all
+     * other online sessions of the logged-in user actively.
+     * * If the server property
+     * `turms.service.notification.friend-request-recalled.notify-friend-request-recipient` is true
+     * (true by default), the server will send a delete friend request notification to the recipient
+     * of the friend request actively.
      *
      * @throws ResponseException if an error occurs.
      */
-    auto deleteFriendRequest(int64_t requestId) -> boost::future<Response<void>>;
+    auto deleteFriendRequest(int64_t requestId) const -> boost::future<Response<void>>;
 
     /**
      * Reply to a friend request.
      *
      * If the logged-in user accepts a friend request sent by another user,
-     * the server will create a relationship between the logged-in user and the friend request sender.
+     * the server will create a relationship between the logged-in user and the friend request
+     * sender.
      *
      * Authorization:
      * * If the logged-in user is not the recipient of the friend request,
-     *   throws ResponseException with the code ResponseStatusCode::kNotRecipientToUpdateFriendRequest.
+     *   throws ResponseException with the code
+     * ResponseStatusCode::kNotRecipientToUpdateFriendRequest.
      * * If the friend request is not pending (e.g. expired, accepted, deleted, etc),
      *   throws ResponseException with the code ResponseStatusCode::kUpdateNonPendingFriendRequest.
      *
      * Notifications:
-     * * If the server property `turms.service.notification.friend-request-replied.notify-requester-other-online-sessions`,
-     *   is true (true by default), the server will send a reply friend request notification to all other online sessions of the logged-in user actively.
-     * * If the server property `turms.service.notification.friend-request-replied.notify-friend-request-sender`,
-     *   is true (true by default), the server will send a reply friend request notification to the friend request sender actively.
+     * * If the server property
+     * `turms.service.notification.friend-request-replied.notify-requester-other-online-sessions`,
+     *   is true (true by default), the server will send a reply friend request notification to all
+     * other online sessions of the logged-in user actively.
+     * * If the server property
+     * `turms.service.notification.friend-request-replied.notify-friend-request-sender`, is true
+     * (true by default), the server will send a reply friend request notification to the friend
+     * request sender actively.
      *
      * @param requestId the target friend request ID.
      * @param responseAction the response action.
@@ -487,7 +591,7 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      */
     auto replyFriendRequest(int64_t requestId,
                             ResponseAction responseAction,
-                            const boost::optional<absl::string_view>& reason = boost::none)
+                            const std::optional<absl::string_view>& reason = std::nullopt) const
         -> boost::future<Response<void>>;
 
     /**
@@ -504,8 +608,8 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * @throws ResponseException if an error occurs.
      */
     auto queryFriendRequests(bool areSentByMe,
-                             const boost::optional<time_point>& lastUpdatedDate = boost::none)
-        -> boost::future<Response<boost::optional<UserFriendRequestsWithVersion>>>;
+                             const std::optional<time_point>& lastUpdatedDate = std::nullopt) const
+        -> boost::future<Response<std::optional<UserFriendRequestsWithVersion>>>;
 
     /**
      * Create a relationship group.
@@ -514,16 +618,20 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * @return the index of the created group.
      * @throws ResponseException if an error occurs.
      */
-    auto createRelationshipGroup(const absl::string_view& name) -> boost::future<Response<int>>;
+    auto createRelationshipGroup(absl::string_view name) const -> boost::future<Response<int>>;
 
     /**
      * Delete relationship groups.
      *
      * Notifications:
-     * * If the server property `turms.service.notification.one-sided-relationship-group-deleted.notify-requester-other-online-sessions`,
-     *   is true (true by default), the server will send a delete relationship groups relationship notification to all other online sessions of the logged-in user actively.
-     * * If the server property `turms.service.notification.one-sided-relationship-group-deleted.notify-relationship-group-members`,
-     *   is true (false by default), the server will send a delete relationship groups relationship notification to all group members in groups.
+     * * If the server property
+     * `turms.service.notification.one-sided-relationship-group-deleted.notify-requester-other-online-sessions`,
+     *   is true (true by default), the server will send a delete relationship groups relationship
+     * notification to all other online sessions of the logged-in user actively.
+     * * If the server property
+     * `turms.service.notification.one-sided-relationship-group-deleted.notify-relationship-group-members`,
+     *   is true (false by default), the server will send a delete relationship groups relationship
+     * notification to all group members in groups.
      *
      * @param groupIndex the target group index to delete.
      * @param targetGroupIndex move the group members of groupIndex to targetGroupIndex
@@ -532,24 +640,28 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * @throws ResponseException if an error occurs.
      */
     auto deleteRelationshipGroups(int groupIndex,
-                                  boost::optional<int> targetGroupIndex = boost::none)
+                                  const std::optional<int>& targetGroupIndex = std::nullopt) const
         -> boost::future<Response<void>>;
 
     /**
      * Update a relationship group.
      *
      * Notifications:
-     * * If the server property `turms.service.notification.one-sided-relationship-group-updated.notify-requester-other-online-sessions`,
-     *   is true (true by default), the server will send a updated relationship groups relationship notification to all other online sessions of the logged-in user actively.
-     * * If the server property `turms.service.notification.one-sided-relationship-group-updated.notify-relationship-group-members`,
-     *   is true (false by default), the server will send a updated relationship groups relationship notification to all group members in groups.
+     * * If the server property
+     * `turms.service.notification.one-sided-relationship-group-updated.notify-requester-other-online-sessions`,
+     *   is true (true by default), the server will send a updated relationship groups relationship
+     * notification to all other online sessions of the logged-in user actively.
+     * * If the server property
+     * `turms.service.notification.one-sided-relationship-group-updated.notify-relationship-group-members`,
+     *   is true (false by default), the server will send a updated relationship groups relationship
+     * notification to all group members in groups.
      *
      * @param groupIndex the target group index.
      * @param newName the new name of the group.
      * @throws ResponseException if an error occurs.
      */
-    auto updateRelationshipGroup(int groupIndex,
-                                 const absl::string_view& newName) -> boost::future<Response<void>>;
+    auto updateRelationshipGroup(int groupIndex, absl::string_view newName) const
+        -> boost::future<Response<void>>;
 
     /**
      * Find relationship groups.
@@ -561,24 +673,28 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      * Note: The version can be used to update the last updated date stored locally.
      * @throws ResponseException if an error occurs.
      */
-    auto queryRelationshipGroups(const boost::optional<time_point>& lastUpdatedDate = boost::none)
-        -> boost::future<Response<boost::optional<UserRelationshipGroupsWithVersion>>>;
+    auto queryRelationshipGroups(const std::optional<time_point>& lastUpdatedDate = std::nullopt)
+        const -> boost::future<Response<std::optional<UserRelationshipGroupsWithVersion>>>;
 
     /**
      * Move a related user to a group.
      *
      * Notifications:
-     * * If the server property `turms.service.notification.one-sided-relationship-updated.notify-requester-other-online-sessions`,
-     *   is true (true by default), the server will send a update relationship notification to all other online sessions of the logged-in user actively.
-     * * If the server property `turms.service.notification.one-sided-relationship-updated.notify-related-user`,
-     *   is true (false by default), the server will send a update relationship notification to relatedUserId actively.
+     * * If the server property
+     * `turms.service.notification.one-sided-relationship-updated.notify-requester-other-online-sessions`,
+     *   is true (true by default), the server will send a update relationship notification to all
+     * other online sessions of the logged-in user actively.
+     * * If the server property
+     * `turms.service.notification.one-sided-relationship-updated.notify-related-user`, is true
+     * (false by default), the server will send a update relationship notification to relatedUserId
+     * actively.
      *
      * @param relatedUserId the target user ID.
      * @param groupIndex the target group index to which move the user.
      * @throws ResponseException if an error occurs.
      */
-    auto moveRelatedUserToGroup(int64_t relatedUserId,
-                                int groupIndex) -> boost::future<Response<void>>;
+    auto moveRelatedUserToGroup(int64_t relatedUserId, int groupIndex) const
+        -> boost::future<Response<void>>;
 
     /**
      * Update the location of the logged-in user.
@@ -598,23 +714,21 @@ class UserService : private boost::noncopyable, private std::enable_shared_from_
      */
     auto updateLocation(float latitude,
                         float longitude,
-                        const std::unordered_map<std::string, std::string>& details = {})
+                        const std::unordered_map<std::string, std::string>& details = {}) const
         -> boost::future<Response<void>>;
 
    private:
     TurmsClient& turmsClient_;
-    boost::optional<User> userInfo_;
+    std::optional<User> userInfo_;
     bool storePassword_{false};
     std::list<std::function<void()>> onOnlineListeners_;
     std::list<std::function<void(const SessionCloseInfo&)>> onOfflineListeners_;
 
-    auto changeToOnline() -> void;
+    auto changeToOnline() const -> void;
 
     auto changeToOffline(const SessionCloseInfo& sessionCloseInfo) -> void;
 };
-
 }  // namespace service
-}  // namespace client
-}  // namespace turms
+}  // namespace turms::client
 
 #endif  // TURMS_CLIENT_SERVICE_USER_SERVICE_H

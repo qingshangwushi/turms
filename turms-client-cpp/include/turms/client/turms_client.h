@@ -5,15 +5,14 @@
 #include <boost/thread/future.hpp>
 
 #include "turms/client/driver/turms_driver.h"
+#include "turms/client/service/conference_service.h"
 #include "turms/client/service/conversation_service.h"
 #include "turms/client/service/group_service.h"
 #include "turms/client/service/message_service.h"
 #include "turms/client/service/notification_service.h"
 #include "turms/client/service/user_service.h"
 
-namespace turms {
-namespace client {
-
+namespace turms::client {
 /**
  * non-thread safe implementation
  */
@@ -24,6 +23,7 @@ class TurmsClient {
     using GroupService = service::GroupService;
     using ConversationService = service::ConversationService;
     using MessageService = service::MessageService;
+    using ConferenceService = service::ConferenceService;
     using NotificationService = service::NotificationService;
 
    public:
@@ -34,12 +34,12 @@ class TurmsClient {
      * 2. User can pass rvalue if they don't want to maintain io_context.
      */
     explicit TurmsClient(const std::shared_ptr<boost::asio::io_context>& ioContext,
-                         const boost::optional<std::string>& host = boost::none,
-                         const boost::optional<int>& port = boost::none,
-                         const boost::optional<int>& connectTimeoutMillis = boost::none,
-                         const boost::optional<int>& requestTimeoutMillis = boost::none,
-                         const boost::optional<int>& minRequestIntervalMillis = boost::none,
-                         const boost::optional<int>& heartbeatIntervalMillis = boost::none);
+                         const std::optional<std::string>& host = std::nullopt,
+                         const std::optional<int>& port = std::nullopt,
+                         const std::optional<int>& connectTimeoutMillis = std::nullopt,
+                         const std::optional<int>& requestTimeoutMillis = std::nullopt,
+                         const std::optional<int>& minRequestIntervalMillis = std::nullopt,
+                         const std::optional<int>& heartbeatIntervalMillis = std::nullopt);
 
     ~TurmsClient();
 
@@ -55,6 +55,8 @@ class TurmsClient {
 
     auto messageService() noexcept -> MessageService&;
 
+    auto conferenceService() noexcept -> ConferenceService&;
+
     auto notificationService() noexcept -> NotificationService&;
 
    private:
@@ -63,9 +65,9 @@ class TurmsClient {
     GroupService groupService_;
     ConversationService conversationService_;
     MessageService messageService_;
+    ConferenceService conferenceService_;
     NotificationService notificationService_;
 };
-}  // namespace client
-}  // namespace turms
+}  // namespace turms::client
 
 #endif  // TURMS_CLIENT_TURMS_CLIENT_H

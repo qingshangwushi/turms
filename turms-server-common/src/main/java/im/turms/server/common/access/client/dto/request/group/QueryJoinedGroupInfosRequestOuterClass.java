@@ -25,8 +25,8 @@ public final class QueryJoinedGroupInfosRequestOuterClass {
         com.google.protobuf.RuntimeVersion.validateProtobufGencodeVersion(
                 com.google.protobuf.RuntimeVersion.RuntimeDomain.PUBLIC,
                 /* major= */ 4,
-                /* minor= */ 27,
-                /* patch= */ 0,
+                /* minor= */ 29,
+                /* patch= */ 1,
                 /* suffix= */ "",
                 QueryJoinedGroupInfosRequestOuterClass.class.getName());
     }
@@ -48,22 +48,30 @@ public final class QueryJoinedGroupInfosRequestOuterClass {
     private static final com.google.protobuf.Descriptors.FileDescriptor descriptor;
     static {
         java.lang.String[] descriptorData = {"\n4request/group/query_joined_group_infos"
-                + "_request.proto\022\016im.turms.proto\"T\n\034QueryJ"
-                + "oinedGroupInfosRequest\022\036\n\021last_updated_d"
-                + "ate\030\001 \001(\003H\000\210\001\001B\024\n\022_last_updated_dateB=\n6"
-                + "im.turms.server.common.access.client.dto"
-                + ".request.groupP\001\272\002\000b\006proto3"};
+                + "_request.proto\022\016im.turms.proto\032\030model/co"
+                + "mmon/value.proto\"\252\001\n\034QueryJoinedGroupInf"
+                + "osRequest\022\036\n\021last_updated_date\030\001 \001(\003H\000\210\001"
+                + "\001\022\"\n\032user_ids_for_common_groups\030\002 \003(\003\0220\n"
+                + "\021custom_attributes\030\017 \003(\0132\025.im.turms.prot"
+                + "o.ValueB\024\n\022_last_updated_dateB=\n6im.turm"
+                + "s.server.common.access.client.dto.reques"
+                + "t.groupP\001\272\002\000b\006proto3"};
         descriptor = com.google.protobuf.Descriptors.FileDescriptor.internalBuildGeneratedFileFrom(
                 descriptorData,
-                new com.google.protobuf.Descriptors.FileDescriptor[]{});
+                new com.google.protobuf.Descriptors.FileDescriptor[]{
+                        im.turms.server.common.access.client.dto.model.common.ValueOuterClass
+                                .getDescriptor(),});
         internal_static_im_turms_proto_QueryJoinedGroupInfosRequest_descriptor =
                 getDescriptor().getMessageTypes()
-                        .get(0);
+                        .getFirst();
         internal_static_im_turms_proto_QueryJoinedGroupInfosRequest_fieldAccessorTable =
                 new com.google.protobuf.GeneratedMessage.FieldAccessorTable(
                         internal_static_im_turms_proto_QueryJoinedGroupInfosRequest_descriptor,
-                        new java.lang.String[]{"LastUpdatedDate",});
+                        new java.lang.String[]{"LastUpdatedDate",
+                                "UserIdsForCommonGroups",
+                                "CustomAttributes",});
         descriptor.resolveAllFeaturesImmutable();
+        im.turms.server.common.access.client.dto.model.common.ValueOuterClass.getDescriptor();
     }
 
     // @@protoc_insertion_point(outer_class_scope)

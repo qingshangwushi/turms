@@ -37,7 +37,6 @@ import lombok.Getter;
 import reactor.core.publisher.Mono;
 import reactor.netty.Connection;
 import reactor.netty.channel.ChannelOperations;
-import reactor.netty.channel.MicrometerChannelMetricsRecorder;
 import reactor.netty.tcp.TcpClient;
 
 import im.turms.server.common.infra.cluster.service.ClusterService;
@@ -55,6 +54,7 @@ import im.turms.server.common.infra.exception.ThrowableUtil;
 import im.turms.server.common.infra.logging.core.logger.Logger;
 import im.turms.server.common.infra.logging.core.logger.LoggerFactory;
 import im.turms.server.common.infra.logging.core.model.LogLevel;
+import im.turms.server.common.infra.metrics.TurmsMicrometerChannelMetricsRecorder;
 import im.turms.server.common.infra.net.SslContextSpecType;
 import im.turms.server.common.infra.net.SslUtil;
 import im.turms.server.common.infra.property.env.common.SslProperties;
@@ -63,8 +63,10 @@ import im.turms.server.common.infra.property.env.common.cluster.connection.Conne
 import im.turms.server.common.infra.property.env.common.cluster.connection.ConnectionServerProperties;
 import im.turms.server.common.infra.thread.NamedThreadFactory;
 import im.turms.server.common.infra.thread.ThreadNameConst;
+import im.turms.server.common.infra.thread.TurmsThread;
+import im.turms.server.common.infra.time.DateTimeUtil;
 
-import static im.turms.server.common.infra.metrics.CommonMetricNameConst.NODE_TCP_CLIENT;
+import static im.turms.server.common.infra.metrics.CommonMetricNameConst.TURMS_RPC_CLIENT_TCP;
 
 /**
  * Responsibilities: Focus on endpoint communication (including network transport) 1. Requested by
@@ -78,9 +80,9 @@ import static im.turms.server.common.infra.metrics.CommonMetricNameConst.NODE_TC
  * @author James Chen
  * @implNote Note that ConnectionService has a strong relationship with RpcService because: 1.
  *           ConnectionService isn't just TransportService, and it maintains transport channels
- *           between peers, but also needs to check if channels still healthy by sending keepalive
- *           RPC requests via RpcService. 2. RpcService sends RPC requests and receives RPC
- *           responses, depending on the transport channels provided by ConnectionService.
+ *           between peers, but also needs to check if channels are still healthy by sending
+ *           keepalive RPC requests via RpcService. 2. RpcService sends RPC requests and receives
+ *           RPC responses, depending on the transport channels provided by ConnectionService.
  *           <p>
  *           We don't make RpcService as a part of ConnectionService because: 1. Decouple RPC
  *           ability from ConnectionService to follow single responsibility principle for better
@@ -93,14 +95,14 @@ public class ConnectionService implements ClusterService {
     private static final Logger LOGGER = LoggerFactory.getLogger(ConnectionService.class);
 
     private final SslProperties clientSsl;
-    private final long keepaliveIntervalMillis;
-    private final long keepaliveTimeoutMillis;
+    private final long keepaliveIntervalNanos;
+    private final long keepaliveTimeoutNanos;
     private final Duration reconnectInterval;
 
     // Thread resources
     private final ScheduledExecutorService connectionRetryScheduler;
     private final NioEventLoopGroup eventLoopGroupForClients;
-    private final Thread keepaliveThread;
+    private final TurmsThread keepaliveThread;
 
     /**
      * Note that: 1. It is allowed to connect to non-member turms servers. 2. Only after handshake
@@ -131,8 +133,10 @@ public class ConnectionService implements ClusterService {
         serverProperties = connectionProperties.getServer();
         ConnectionClientProperties clientProperties = connectionProperties.getClient();
         clientSsl = clientProperties.getSsl();
-        keepaliveIntervalMillis = clientProperties.getKeepaliveIntervalSeconds() * 1000L;
-        keepaliveTimeoutMillis = clientProperties.getKeepaliveTimeoutSeconds() * 1000L;
+        keepaliveIntervalNanos =
+                DateTimeUtil.secondsToNanos(clientProperties.getKeepaliveIntervalSeconds());
+        keepaliveTimeoutNanos =
+                DateTimeUtil.secondsToNanos(clientProperties.getKeepaliveTimeoutSeconds());
         reconnectInterval = Duration.ofSeconds(clientProperties.getReconnectIntervalSeconds());
         eventLoopGroupForClients = new NioEventLoopGroup(
                 Runtime.getRuntime()
@@ -140,8 +144,8 @@ public class ConnectionService implements ClusterService {
                 new DefaultThreadFactory(ThreadNameConst.NODE_CONNECTION_CLIENT_IO));
         connectionRetryScheduler = Executors.newScheduledThreadPool(1,
                 new NamedThreadFactory(ThreadNameConst.NODE_CONNECTION_RETRY, true));
-        keepaliveThread = NamedThreadFactory
-                .newThread(ThreadNameConst.NODE_CONNECTION_KEEPALIVE, true, () -> {
+        keepaliveThread =
+                TurmsThread.create(ThreadNameConst.NODE_CONNECTION_KEEPALIVE, true, () -> {
                     sendKeepaliveToConnectionsForever();
                     LOGGER.warn("The node keepalive thread has been stopped");
                 });
@@ -152,7 +156,7 @@ public class ConnectionService implements ClusterService {
     @Override
     public Mono<Void> stop(long timeoutMillis) {
         List<Mono<Void>> monos = new LinkedList<>();
-        keepaliveThread.interrupt();
+        monos.add(keepaliveThread.terminate());
         if (server != null) {
             monos.add(server.dispose()
                     .onErrorMap(
@@ -183,11 +187,6 @@ public class ConnectionService implements ClusterService {
             }
         }
         nodeIdToConnection.clear();
-        try {
-            keepaliveThread.join(timeoutMillis);
-        } catch (InterruptedException e) {
-            // ignored
-        }
         return Mono.whenDelayError(monos);
     }
 
@@ -251,7 +250,8 @@ public class ConnectionService implements ClusterService {
         TcpClient client = TcpClient.newConnection()
                 .host(host)
                 .port(port)
-                .metrics(true, () -> new MicrometerChannelMetricsRecorder(NODE_TCP_CLIENT, "tcp"))
+                .metrics(true,
+                        () -> new TurmsMicrometerChannelMetricsRecorder(TURMS_RPC_CLIENT_TCP))
                 .runOn(eventLoopGroupForClients);
         if (clientSsl.isEnabled()) {
             client = client.secure(sslContextSpec -> SslUtil.configureSslContextSpec(sslContextSpec,
@@ -359,7 +359,7 @@ public class ConnectionService implements ClusterService {
                     "Received a keepalive request from a non-connected node: "
                             + nodeId);
         }
-        connection.setLastKeepaliveTimestamp(System.currentTimeMillis());
+        connection.setLastKeepaliveTimestampNanos(System.nanoTime());
     }
 
     private void sendKeepaliveToConnectionsForever() {
@@ -394,23 +394,22 @@ public class ConnectionService implements ClusterService {
         if (!connection.isLocalNodeClient()) {
             return;
         }
-        long now = System.currentTimeMillis();
-        long elapsedTime = now - connection.getLastKeepaliveTimestamp();
-        if (elapsedTime > keepaliveTimeoutMillis) {
+        long elapsedTime = System.nanoTime() - connection.getLastKeepaliveTimestampNanos();
+        if (elapsedTime > keepaliveTimeoutNanos) {
             LOGGER.warn("Reconnecting to the member ({}) due to keepalive timeout", nodeId);
             // onConnectionClosed() will reconnect the member
             disconnectConnection(connection);
             iterator.remove();
             return;
         }
-        if (elapsedTime < keepaliveIntervalMillis) {
+        if (elapsedTime < keepaliveIntervalNanos) {
             return;
         }
         rpcService.requestResponse(nodeId, new KeepaliveRequest())
                 .subscribe(null,
                         t -> LOGGER.warn("Failed to send a keepalive request to the member: "
                                 + nodeId, t),
-                        () -> connection.setLastKeepaliveTimestamp(System.currentTimeMillis()));
+                        () -> connection.setLastKeepaliveTimestampNanos(System.nanoTime()));
     }
 
     // Handshake

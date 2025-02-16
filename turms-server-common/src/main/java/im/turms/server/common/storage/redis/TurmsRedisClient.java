@@ -46,9 +46,12 @@ import lombok.Data;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import im.turms.server.common.infra.exception.ThrowableUtil;
 import im.turms.server.common.infra.netty.ByteBufUtil;
 import im.turms.server.common.infra.netty.ReferenceCountUtil;
+import im.turms.server.common.infra.reactor.PublisherUtil;
 import im.turms.server.common.infra.thread.ThreadNameConst;
+import im.turms.server.common.infra.time.DateTimeUtil;
 import im.turms.server.common.storage.redis.codec.TurmsRedisCodecAdapter;
 import im.turms.server.common.storage.redis.codec.context.RedisCodecContext;
 import im.turms.server.common.storage.redis.command.TurmsCommandEncoder;
@@ -122,27 +125,40 @@ public class TurmsRedisClient {
     }
 
     public Mono<Void> destroy(long timeoutMillis) {
-        long startTime = System.currentTimeMillis();
-        return Mono.fromFuture(nativeClient.shutdownAsync(0, timeoutMillis, TimeUnit.MILLISECONDS))
-                .doFinally(signalType -> {
-                    long timestamp = System.currentTimeMillis();
-                    long elapsedTime = timestamp - startTime;
-                    eventExecutorGroup.shutdownGracefully(0,
-                            Math.max(1, timeoutMillis - elapsedTime),
-                            TimeUnit.MILLISECONDS);
-                    elapsedTime = System.currentTimeMillis() - timestamp;
-                    eventLoopGroupProvider.shutdown(0,
-                            Math.max(1, timeoutMillis - elapsedTime),
-                            TimeUnit.MILLISECONDS);
-                });
+        return Mono.defer(() -> {
+            long startTime = System.nanoTime();
+            return Mono
+                    .fromFuture(nativeClient.shutdownAsync(0, timeoutMillis, TimeUnit.MILLISECONDS))
+                    .then(Mono.defer(() -> {
+                        long elapsedTime =
+                                (System.nanoTime() - startTime) / DateTimeUtil.NANOS_PER_MILLI;
+                        long timeout = Math.max(1, timeoutMillis - elapsedTime);
+                        return PublisherUtil.whenDelayError(
+                                eventExecutorGroup
+                                        .shutdownGracefully(0, timeout, TimeUnit.MILLISECONDS),
+                                eventLoopGroupProvider.shutdown(0, timeout, TimeUnit.MILLISECONDS));
+                    }));
+        });
     }
 
     public Mono<Long> del(Collection<ByteBuf> keys) {
-        return commands.del(keys);
+        return Mono.defer(() -> {
+            ByteBuf[] keyBuffers = new ByteBuf[keys.size()];
+            int i = 0;
+            for (ByteBuf key : keys) {
+                keyBuffers[i++] = ByteBufUtil.ensureByteBufRefCnfCorrect(key);
+            }
+            return commands.del(keyBuffers)
+                    .doFinally(signal -> ReferenceCountUtil.ensureReleased(keyBuffers));
+        });
     }
 
     public Mono<Long> incr(ByteBuf key) {
-        return commands.incr(key);
+        return Mono.defer(() -> {
+            ByteBuf keyBuffer = ByteBufUtil.ensureByteBufRefCnfCorrect(key);
+            return commands.incr(keyBuffer)
+                    .doFinally(signal -> ReferenceCountUtil.ensureReleased(keyBuffer));
+        });
     }
 
     // Hashes
@@ -155,6 +171,18 @@ public class TurmsRedisClient {
                     .doFinally(signal -> {
                         ReferenceCountUtil.ensureReleased(keyBuffer);
                         ReferenceCountUtil.ensureReleased(fieldBuffers);
+                    });
+        });
+    }
+
+    public Mono<Long> hincr(ByteBuf key, ByteBuf field) {
+        return Mono.defer(() -> {
+            ByteBuf keyBuffer = ByteBufUtil.ensureByteBufRefCnfCorrect(key);
+            ByteBuf fieldBuffer = ByteBufUtil.ensureByteBufRefCnfCorrect(field);
+            return commands.hincrby(keyBuffer, fieldBuffer, 1)
+                    .doFinally(signal -> {
+                        ReferenceCountUtil.ensureReleased(keyBuffer);
+                        ReferenceCountUtil.ensureReleased(fieldBuffer);
                     });
         });
     }
@@ -267,7 +295,7 @@ public class TurmsRedisClient {
                     .createFlux(() -> commandBuilder
                             .evalsha(script.digest(), script.outputType(), keys, keyLength))
                     .onErrorResume(e -> {
-                        if (exceptionContainsNoScriptException(e)) {
+                        if (ThrowableUtil.contains(e, RedisNoScriptException.class)) {
                             return commands.createFlux(() -> commandBuilder
                                     .eval(script.script(), script.outputType(), keys, keyLength));
                         }
@@ -276,20 +304,6 @@ public class TurmsRedisClient {
                     .doFinally(signal -> ReferenceCountUtil.ensureReleased(keys))
                     .single();
         });
-    }
-
-    private boolean exceptionContainsNoScriptException(Throwable e) {
-        if (e instanceof RedisNoScriptException) {
-            return true;
-        }
-        Throwable current = e.getCause();
-        while (current != null) {
-            if (current instanceof RedisNoScriptException) {
-                return true;
-            }
-            current = current.getCause();
-        }
-        return false;
     }
 
 }

@@ -82,7 +82,7 @@ public class UserController extends BaseController {
                 addUserDTO.intro(),
                 addUserDTO.profilePicture(),
                 addUserDTO.profileAccessStrategy(),
-                addUserDTO.permissionGroupId(),
+                addUserDTO.roleId(),
                 addUserDTO.registrationDate(),
                 addUserDTO.isActive());
         return HttpHandlerResult.okIfTruthy(addUser);
@@ -206,9 +206,10 @@ public class UserController extends BaseController {
                         updateUserDTO.intro(),
                         updateUserDTO.profilePicture(),
                         updateUserDTO.profileAccessStrategy(),
-                        updateUserDTO.permissionGroupId(),
+                        updateUserDTO.roleId(),
                         updateUserDTO.registrationDate(),
-                        updateUserDTO.isActive())
+                        updateUserDTO.isActive(),
+                        null)
                 .map(UpdateResultDTO::get);
         return HttpHandlerResult.okIfTruthy(updateMono);
     }

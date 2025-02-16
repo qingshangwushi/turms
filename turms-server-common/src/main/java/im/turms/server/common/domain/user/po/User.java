@@ -18,12 +18,14 @@
 package im.turms.server.common.domain.user.po;
 
 import java.util.Date;
+import java.util.Map;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
 import im.turms.server.common.access.client.dto.constant.ProfileAccessStrategy;
 import im.turms.server.common.domain.common.po.BaseEntity;
+import im.turms.server.common.domain.common.po.Customizable;
 import im.turms.server.common.storage.mongo.entity.annotation.Document;
 import im.turms.server.common.storage.mongo.entity.annotation.EnumNumber;
 import im.turms.server.common.storage.mongo.entity.annotation.Field;
@@ -37,7 +39,7 @@ import im.turms.server.common.storage.mongo.entity.annotation.Sharded;
 @Data
 @Document(User.COLLECTION_NAME)
 @Sharded
-public final class User extends BaseEntity {
+public final class User extends BaseEntity implements Customizable {
 
     public static final String COLLECTION_NAME = "user";
 
@@ -64,8 +66,8 @@ public final class User extends BaseEntity {
     @EnumNumber
     private final ProfileAccessStrategy profileAccessStrategy;
 
-    @Field(Fields.PERMISSION_GROUP_ID)
-    private final Long permissionGroupId;
+    @Field(Fields.ROLE_ID)
+    private final Long roleId;
 
     @Field(Fields.REGISTRATION_DATE)
     private final Date registrationDate;
@@ -79,6 +81,8 @@ public final class User extends BaseEntity {
     @Field(Fields.IS_ACTIVE)
     private final Boolean isActive;
 
+    private final Map<String, Object> userDefinedAttributes;
+
     public static final class Fields {
 
         public static final String PASSWORD = "pw";
@@ -86,7 +90,11 @@ public final class User extends BaseEntity {
         public static final String INTRO = "intro";
         public static final String PROFILE_PICTURE = "pp";
         public static final String PROFILE_ACCESS_STRATEGY = "pas";
-        public static final String PERMISSION_GROUP_ID = "pgid";
+        /**
+         * FIXME: "pgid" is the legacy name for "permissionGroupId", we keep it for backward
+         * compatibility.
+         */
+        public static final String ROLE_ID = "pgid";
         public static final String REGISTRATION_DATE = "rd";
         public static final String DELETION_DATE = "dd";
         public static final String LAST_UPDATED_DATE = "lud";

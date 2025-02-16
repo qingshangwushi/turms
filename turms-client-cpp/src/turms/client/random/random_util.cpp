@@ -1,8 +1,8 @@
 #include "turms/client/random/random_util.h"
 
-namespace turms {
-namespace client {
-namespace random {
+#include <algorithm>
+
+namespace turms::client::random {
 namespace {
 auto makeMt19937() -> std::mt19937_64 {
     std::random_device rd;
@@ -23,6 +23,4 @@ auto nextPositiveInt64() -> int64_t {
         makeUniformPositiveInt64Distribution();
     return distribution(randomEngine);
 }
-}  // namespace random
-}  // namespace client
-}  // namespace turms
+}  // namespace turms::client::random

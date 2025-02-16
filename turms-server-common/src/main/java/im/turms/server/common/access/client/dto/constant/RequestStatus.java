@@ -55,8 +55,8 @@ public enum RequestStatus implements com.google.protobuf.ProtocolMessageEnum {
         com.google.protobuf.RuntimeVersion.validateProtobufGencodeVersion(
                 com.google.protobuf.RuntimeVersion.RuntimeDomain.PUBLIC,
                 /* major= */ 4,
-                /* minor= */ 27,
-                /* patch= */ 0,
+                /* minor= */ 29,
+                /* patch= */ 1,
                 /* suffix= */ "",
                 RequestStatus.class.getName());
     }
@@ -148,7 +148,7 @@ public enum RequestStatus implements com.google.protobuf.ProtocolMessageEnum {
         return im.turms.server.common.access.client.dto.constant.RequestStatusOuterClass
                 .getDescriptor()
                 .getEnumTypes()
-                .get(0);
+                .getFirst();
     }
 
     private static final RequestStatus[] VALUES = values();

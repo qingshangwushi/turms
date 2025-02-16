@@ -17,11 +17,15 @@
 
 package im.turms.gateway.access.client.common;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 
+import im.turms.gateway.domain.observation.service.MetricsService;
 import im.turms.gateway.domain.servicerequest.service.ServiceRequestService;
 import im.turms.gateway.domain.session.access.client.controller.SessionClientController;
 import im.turms.gateway.domain.session.service.SessionService;
@@ -37,23 +41,27 @@ import im.turms.server.common.access.client.dto.request.TurmsRequest;
 import im.turms.server.common.access.common.ResponseStatusCode;
 import im.turms.server.common.access.servicerequest.dto.ServiceRequest;
 import im.turms.server.common.domain.blocklist.service.BlocklistService;
+import im.turms.server.common.infra.application.JobShutdownOrder;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.exception.ResponseException;
 import im.turms.server.common.infra.exception.ThrowableInfo;
 import im.turms.server.common.infra.healthcheck.ServerStatusManager;
 import im.turms.server.common.infra.healthcheck.ServiceAvailability;
 import im.turms.server.common.infra.logging.core.logger.Logger;
 import im.turms.server.common.infra.logging.core.logger.LoggerFactory;
+import im.turms.server.common.infra.metrics.CommonMetricNameConst;
 import im.turms.server.common.infra.property.TurmsPropertiesManager;
 import im.turms.server.common.infra.proto.ProtoDecoder;
 import im.turms.server.common.infra.proto.ProtoEncoder;
+import im.turms.server.common.infra.time.DateTimeUtil;
 import im.turms.server.common.infra.tracing.TracingCloseableContext;
 import im.turms.server.common.infra.tracing.TracingContext;
 
 import static im.turms.server.common.access.client.dto.request.TurmsRequest.KindCase.CREATE_SESSION_REQUEST;
 import static im.turms.server.common.access.client.dto.request.TurmsRequest.KindCase.DELETE_SESSION_REQUEST;
 import static im.turms.server.common.access.client.dto.request.TurmsRequest.KindCase.KIND_NOT_SET;
-import static im.turms.server.common.infra.metrics.CommonMetricNameConst.CLIENT_REQUEST;
-import static im.turms.server.common.infra.metrics.CommonMetricNameConst.CLIENT_REQUEST_TAG_TYPE;
+import static im.turms.server.common.infra.metrics.CommonMetricNameConst.TURMS_CLIENT_REQUEST;
+import static im.turms.server.common.infra.metrics.CommonMetricNameConst.TURMS_CLIENT_REQUEST_TAG_TYPE;
 
 /**
  * @author James Chen
@@ -84,7 +92,11 @@ public class ClientRequestDispatcher {
     private final ServiceRequestService serviceRequestService;
     private final ServerStatusManager serverStatusManager;
 
+    private final AtomicInteger pendingRequestCount;
+    private volatile Runnable onAllRequestsHandled;
+
     public ClientRequestDispatcher(
+            TurmsApplicationContext applicationContext,
             ApiLoggingContext apiLoggingContext,
             BlocklistService blocklistService,
             IpRequestThrottler ipRequestThrottler,
@@ -92,6 +104,7 @@ public class ClientRequestDispatcher {
             SessionService sessionService,
             ServiceRequestService serviceRequestService,
             ServerStatusManager serverStatusManager,
+            MetricsService metricsService,
             TurmsPropertiesManager propertiesManager) {
         this.apiLoggingContext = apiLoggingContext;
         this.blocklistService = blocklistService;
@@ -100,7 +113,21 @@ public class ClientRequestDispatcher {
         this.sessionService = sessionService;
         this.serviceRequestService = serviceRequestService;
         this.serverStatusManager = serverStatusManager;
+        pendingRequestCount = metricsService.getRegistry()
+                .gauge(CommonMetricNameConst.TURMS_CLIENT_REQUEST_PENDING, new AtomicInteger());
         NotificationFactory.init(propertiesManager);
+        applicationContext.addShutdownHook(JobShutdownOrder.WAIT_FOR_PENDING_REQUESTS,
+                timeoutMillis -> {
+                    if (pendingRequestCount.get() == 0) {
+                        return Mono.empty();
+                    }
+                    Sinks.One<Void> sink = Sinks.one();
+                    this.onAllRequestsHandled = sink::tryEmitEmpty;
+                    if (pendingRequestCount.get() == 0) {
+                        return Mono.empty();
+                    }
+                    return sink.asMono();
+                });
     }
 
     /**
@@ -111,6 +138,19 @@ public class ClientRequestDispatcher {
      *           1
      */
     public Mono<ByteBuf> handleRequest(
+            UserSessionWrapper sessionWrapper,
+            ByteBuf serviceRequestBuffer) {
+        pendingRequestCount.incrementAndGet();
+        try {
+            return handleRequest0(sessionWrapper, serviceRequestBuffer)
+                    .doFinally(signalType -> onPendingRequestHandled());
+        } catch (Exception e) {
+            onPendingRequestHandled();
+            return Mono.error(e);
+        }
+    }
+
+    public Mono<ByteBuf> handleRequest0(
             UserSessionWrapper sessionWrapper,
             ByteBuf serviceRequestBuffer) {
         // Check if it is a heartbeat request
@@ -127,6 +167,7 @@ public class ClientRequestDispatcher {
         }
         // Parse and handle service requests
         long requestTime = System.currentTimeMillis();
+        long startTime = System.nanoTime();
         int requestSize = serviceRequestBuffer.readableBytes();
         SimpleTurmsRequest request;
         SimpleTurmsRequest tempRequest;
@@ -170,8 +211,8 @@ public class ClientRequestDispatcher {
         }
         return notificationMono
                 // Metrics and logging
-                .name(CLIENT_REQUEST)
-                .tag(CLIENT_REQUEST_TAG_TYPE, requestType.name())
+                .name(TURMS_CLIENT_REQUEST)
+                .tag(TURMS_CLIENT_REQUEST_TAG_TYPE, requestType.name())
                 .metrics()
                 .onErrorResume(throwable -> {
                     ThrowableInfo info = ThrowableInfo.get(throwable);
@@ -211,7 +252,7 @@ public class ClientRequestDispatcher {
                                     requestSize,
                                     requestTime,
                                     notification,
-                                    System.currentTimeMillis() - requestTime);
+                                    (System.nanoTime() - startTime) / DateTimeUtil.NANOS_PER_MILLI);
                         }
                     }
                     return ProtoEncoder.getDirectByteBuffer(notification);
@@ -248,8 +289,7 @@ public class ClientRequestDispatcher {
             }
 
             // Rate limiting
-            long now = System.currentTimeMillis();
-            if (!ipRequestThrottler.tryAcquireToken(sessionWrapper.getIp(), now)) {
+            if (!ipRequestThrottler.tryAcquireToken(sessionWrapper.getIp(), System.nanoTime())) {
                 blocklistService.tryBlockIpForFrequentRequest(sessionWrapper.getIp());
                 UserSession userSession = sessionWrapper.getUserSession();
                 if (userSession != null) {
@@ -357,6 +397,16 @@ public class ClientRequestDispatcher {
             builder.setReason(reason);
         }
         return builder.build();
+    }
+
+    private void onPendingRequestHandled() {
+        int count = pendingRequestCount.decrementAndGet();
+        if (count == 0) {
+            Runnable handler = onAllRequestsHandled;
+            if (handler != null) {
+                handler.run();
+            }
+        }
     }
 
     /**

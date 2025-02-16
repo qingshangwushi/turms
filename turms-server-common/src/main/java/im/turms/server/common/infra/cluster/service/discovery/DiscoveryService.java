@@ -71,6 +71,7 @@ import im.turms.server.common.infra.property.env.common.cluster.DiscoveryPropert
 import im.turms.server.common.infra.reactor.PublisherPool;
 import im.turms.server.common.infra.thread.NamedThreadFactory;
 import im.turms.server.common.infra.thread.ThreadNameConst;
+import im.turms.server.common.infra.thread.ThreadUtil;
 import im.turms.server.common.infra.time.DurationConst;
 import im.turms.server.common.storage.mongo.operation.option.Filter;
 import im.turms.server.common.storage.mongo.operation.option.Update;
@@ -655,6 +656,7 @@ public class DiscoveryService implements ClusterService {
             case AI_SERVING -> otherActiveConnectedAiServingMembers;
             case GATEWAY -> otherActiveConnectedGatewayMembers;
             case SERVICE -> otherActiveConnectedServiceMembers;
+            case MOCK -> Collections.emptyList();
         };
         int size = isAdd
                 ? memberList.size() + 1
@@ -691,19 +693,15 @@ public class DiscoveryService implements ClusterService {
     @Override
     public Mono<Void> stop(long timeoutMillis) {
         localNodeStatusManager.setClosing(true);
-        scheduler.shutdown();
-        try {
-            scheduler.awaitTermination(timeoutMillis, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            // ignored
-        }
-        if (localNodeStatusManager.isLocalNodeRegistered()) {
-            return localNodeStatusManager.unregisterLocalNodeMembershipAndLeadership()
-                    .onErrorMap(t -> new RuntimeException(
-                            "Caught an error while unregistering the membership of the local node",
-                            t));
-        }
-        return Mono.empty();
+        return Mono.whenDelayError(ThreadUtil.shutdown(scheduler, timeoutMillis), Mono.defer(() -> {
+            if (localNodeStatusManager.isLocalNodeRegistered()) {
+                return localNodeStatusManager.unregisterLocalNodeMembershipAndLeadership()
+                        .onErrorMap(t -> new RuntimeException(
+                                "Caught an error while unregistering the membership of the local node",
+                                t));
+            }
+            return Mono.empty();
+        }));
     }
 
     // Registration
@@ -872,7 +870,7 @@ public class DiscoveryService implements ClusterService {
                 }
             }
         }
-        return electNewLeaderByNodeId(qualifiedMembers.get(0)
+        return electNewLeaderByNodeId(qualifiedMembers.getFirst()
                 .getNodeId());
     }
 

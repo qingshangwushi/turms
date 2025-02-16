@@ -33,7 +33,7 @@ import im.turms.server.common.domain.admin.po.Admin;
 import im.turms.server.common.domain.admin.po.AdminRole;
 import im.turms.server.common.domain.user.po.User;
 import im.turms.server.common.infra.collection.CollectorUtil;
-import im.turms.server.common.infra.property.env.service.env.database.TurmsMongoProperties;
+import im.turms.server.common.infra.property.env.common.mongo.MongoProperties;
 import im.turms.server.common.storage.mongo.TurmsMongoClient;
 import im.turms.service.domain.conversation.po.GroupConversation;
 import im.turms.service.domain.conversation.po.PrivateConversation;
@@ -47,10 +47,10 @@ import im.turms.service.domain.group.po.GroupType;
 import im.turms.service.domain.group.po.GroupVersion;
 import im.turms.service.domain.message.po.Message;
 import im.turms.service.domain.user.po.UserFriendRequest;
-import im.turms.service.domain.user.po.UserPermissionGroup;
 import im.turms.service.domain.user.po.UserRelationship;
 import im.turms.service.domain.user.po.UserRelationshipGroup;
 import im.turms.service.domain.user.po.UserRelationshipGroupMember;
+import im.turms.service.domain.user.po.UserRole;
 import im.turms.service.domain.user.po.UserVersion;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -81,7 +81,7 @@ class MongoCollectionInitializerIT extends SpringAwareIntegrationTest {
             // User
             User.class,
             UserFriendRequest.class,
-            UserPermissionGroup.class,
+            UserRole.class,
             UserRelationship.class,
             UserRelationshipGroup.class,
             UserRelationshipGroupMember.class,
@@ -93,8 +93,7 @@ class MongoCollectionInitializerIT extends SpringAwareIntegrationTest {
     void setup() {
         setupTestEnvironment();
 
-        TurmsMongoProperties mongoProperties =
-                new TurmsMongoProperties(testEnvironmentManager.getMongoUri());
+        MongoProperties mongoProperties = new MongoProperties(testEnvironmentManager.getMongoUri());
         mongoClient = TurmsMongoClient.of(mongoProperties, "test")
                 .block(Duration.ofMinutes(1));
         mongoClient.registerEntitiesByClasses(MODEL_CLASSES);

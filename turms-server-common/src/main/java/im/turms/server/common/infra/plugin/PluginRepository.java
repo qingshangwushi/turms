@@ -17,6 +17,9 @@
 
 package im.turms.server.common.infra.plugin;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -24,11 +27,13 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import jakarta.annotation.Nullable;
 
 import org.jctools.maps.NonBlockingIdentityHashMap;
 
 import im.turms.server.common.infra.collection.CollectionUtil;
 import im.turms.server.common.infra.exception.DuplicateResourceException;
+import im.turms.server.common.infra.io.InputOutputException;
 import im.turms.server.common.infra.logging.core.logger.Logger;
 import im.turms.server.common.infra.logging.core.logger.LoggerFactory;
 
@@ -42,11 +47,6 @@ public class PluginRepository {
     private final ConcurrentHashMap<String, Plugin> idToPlugin = new ConcurrentHashMap<>(16);
     private final NonBlockingIdentityHashMap<Class<? extends ExtensionPoint>, List<ExtensionPoint>> classToExtensionPoint =
             new NonBlockingIdentityHashMap<>(16);
-    private final Set<Class<? extends ExtensionPoint>> singletonExtensionPointClasses;
-
-    public PluginRepository(Set<Class<? extends ExtensionPoint>> singletonExtensionPointClasses) {
-        this.singletonExtensionPointClasses = singletonExtensionPointClasses;
-    }
 
     public void register(Plugin plugin) {
         String id = plugin.descriptor()
@@ -59,7 +59,7 @@ public class PluginRepository {
                     List<ExtensionPoint> extensionPoints =
                             classToExtensionPoint.computeIfAbsent(extensionPointClass,
                                     key -> new CopyOnWriteArrayList<>());
-                    if (singletonExtensionPointClasses.contains(extensionPointClass)
+                    if (Singleton.class.isAssignableFrom(extensionPointClass)
                             && !extensionPoints.isEmpty()) {
                         throw new DuplicateResourceException(
                                 "The singleton extension point ("
@@ -128,22 +128,10 @@ public class PluginRepository {
     public List<Plugin> removePlugins(Set<String> ids) {
         List<Plugin> removedPlugins = new ArrayList<>(ids.size());
         for (String id : ids) {
-            Plugin plugin = idToPlugin.remove(id);
-            if (plugin == null) {
-                continue;
+            Plugin plugin = removePlugin(id);
+            if (plugin != null) {
+                removedPlugins.add(plugin);
             }
-            for (TurmsExtension extension : plugin.extensions()) {
-                ExtensionPoint extensionPoint = extension.getExtensionPoint();
-                for (Class<? extends ExtensionPoint> extensionPointClass : extension
-                        .getExtensionPointClasses()) {
-                    List<ExtensionPoint> extensionPoints =
-                            classToExtensionPoint.get(extensionPointClass);
-                    if (extensionPoints != null) {
-                        extensionPoints.remove(extensionPoint);
-                    }
-                }
-            }
-            removedPlugins.add(plugin);
         }
         if (!removedPlugins.isEmpty()) {
             String removedPluginIds = CollectionUtil.toLatin1String(removedPlugins,
@@ -152,6 +140,54 @@ public class PluginRepository {
             LOGGER.info("The plugins {} has been removed. The current number of plugins is: {}",
                     removedPluginIds,
                     idToPlugin.size());
+        }
+        return removedPlugins;
+    }
+
+    @Nullable
+    public Plugin removePlugin(String id) {
+        Plugin plugin = idToPlugin.remove(id);
+        if (plugin == null) {
+            return null;
+        }
+        for (TurmsExtension extension : plugin.extensions()) {
+            ExtensionPoint extensionPoint = extension.getExtensionPoint();
+            for (Class<? extends ExtensionPoint> extensionPointClass : extension
+                    .getExtensionPointClasses()) {
+                List<ExtensionPoint> extensionPoints =
+                        classToExtensionPoint.get(extensionPointClass);
+                if (extensionPoints != null) {
+                    extensionPoints.remove(extensionPoint);
+                }
+            }
+        }
+        return plugin;
+    }
+
+    public List<Plugin> removePlugins(Path path) {
+        List<Plugin> removedPlugins = new ArrayList<>(1);
+        Path pluginPath;
+        boolean isSameFile;
+        for (Plugin plugin : idToPlugin.values()) {
+            pluginPath = plugin.descriptor()
+                    .getPath();
+            try {
+                isSameFile = Files.isSameFile(pluginPath, path);
+            } catch (IOException e) {
+                throw new InputOutputException(
+                        "Failed to check if the plugin file ("
+                                + pluginPath
+                                + ") is the same as the file: "
+                                + path,
+                        e);
+            }
+            if (isSameFile) {
+                Plugin removedPlugin = removePlugin(plugin.descriptor()
+                        .getId());
+                if (removedPlugin != null) {
+                    removedPlugins.add(removedPlugin);
+                }
+            }
         }
         return removedPlugins;
     }

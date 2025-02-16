@@ -83,9 +83,9 @@ public final class Validator {
         return (value1 == null) == (value2 == null);
     }
 
-    public static void notContains(
-            @Nullable Collection<?> collection,
-            Object value,
+    public static <T> void notContains(
+            @Nullable Collection<T> collection,
+            T value,
             String message) {
         if (collection != null && collection.contains(value)) {
             throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT, message);
@@ -398,7 +398,7 @@ public final class Validator {
     }
 
     public static void ip(@Nullable byte[] ip, String name) {
-        if (ip != null && !InetAddressUtil.isIpV4OrV6(ip)) {
+        if (ip != null && !InetAddressUtil.isIp(ip)) {
             throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
                     ("\""
                             + name

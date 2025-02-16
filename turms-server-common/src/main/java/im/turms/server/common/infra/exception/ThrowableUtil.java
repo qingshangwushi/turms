@@ -106,4 +106,22 @@ public final class ThrowableUtil {
         }
     }
 
+    public static <T extends Throwable> boolean contains(
+            @Nullable Throwable throwable,
+            Class<T> classToFind) {
+        if (throwable == null) {
+            return false;
+        }
+        if (classToFind.isAssignableFrom(throwable.getClass())) {
+            return true;
+        }
+        Throwable current = throwable.getCause();
+        while (current != null) {
+            if (classToFind.isAssignableFrom(current.getClass())) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
 }

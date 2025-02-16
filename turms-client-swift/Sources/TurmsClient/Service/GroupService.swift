@@ -1,8 +1,7 @@
 import Foundation
-import PromiseKit
 
 public class GroupService {
-    private weak var turmsClient: TurmsClient!
+    private unowned var turmsClient: TurmsClient
 
     public init(_ turmsClient: TurmsClient) {
         self.turmsClient = turmsClient
@@ -29,13 +28,20 @@ public class GroupService {
     ///   - minScore: The group minimum score that a non-member user needs to acquire
     ///     to join the group when answering group questions.
     ///   - typeId: The group type ID.
-    ///     If null, the default group type configured in turms-service will be used.
+    ///     If nil, the default group type configured in turms-service will be used.
     ///
     ///     Authorization:
     ///     * If the group type ID does not exist,
     ///       throws ``ResponseError`` with the code ``ResponseStatusCode/createGroupWithNonexistentGroupType``.
     ///     * If the logged-in user does not have the permission to create the group with `typeId`,
     ///       throws ``ResponseError`` with the code ``ResponseStatusCode/noPermissionToCreateGroupWithGroupType``.
+    ///   - userDefinedAttributes: The user-defined attributes for upsert.
+    ///     1. The attributes must have been defined on the server side via `turms.service.group.info.user-defined-attributes.allowed-attributes`.
+    ///     Otherwise, the method will throw with ``ResponseStatusCode/illegalArgument``
+    ///     if `turms.service.group.info.user-defined-attributes.ignore-unknown-attributes-on-upsert` is false (false by default),
+    ///     or silently ignored if it is true.
+    ///     2. Only public attributes are supported currently, which means other users can find out these attributes
+    ///     via ``queryGroups``.
     ///
     /// - Returns: The group ID.
     ///
@@ -46,34 +52,35 @@ public class GroupService {
         announcement: String? = nil,
         minScore: Int32? = nil,
         muteEndDate: Date? = nil,
-        typeId: Int64? = nil
-    ) -> Promise<Response<Int64>> {
-        return turmsClient.driver
+        typeId: Int64? = nil,
+        userDefinedAttributes: [String: Value]? = nil
+    ) async throws -> Response<Int64> {
+        return try (await turmsClient.driver
             .send {
                 $0.createGroupRequest = .with {
                     $0.name = name
-                    if let v = intro {
-                        $0.intro = v
+                    if let intro {
+                        $0.intro = intro
                     }
-                    if let v = announcement {
-                        $0.announcement = v
+                    if let announcement {
+                        $0.announcement = announcement
                     }
-                    if let v = minScore {
-                        $0.minScore = v
+                    if let minScore {
+                        $0.minScore = minScore
                     }
-                    if let v = muteEndDate {
-                        $0.muteEndDate = v.toMillis()
+                    if let muteEndDate {
+                        $0.muteEndDate = muteEndDate.toMillis()
                     }
-                    if let v = typeId {
-                        $0.typeID = v
+                    if let typeId {
+                        $0.typeID = typeId
+                    }
+                    if let userDefinedAttributes {
+                        $0.userDefinedAttributes = userDefinedAttributes
                     }
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    try $0.getLongOrThrow()
-                }
-            }
+            }).toResponse {
+            try $0.getLongOrThrow()
+        }
     }
 
     /// Delete the target group.
@@ -91,16 +98,13 @@ public class GroupService {
     ///   the server will send a delete group notification to all group members of the target group.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func deleteGroup(_ groupId: Int64) -> Promise<Response<Void>> {
-        return turmsClient.driver
+    public func deleteGroup(_ groupId: Int64) async throws -> Response<Void> {
+        return try (await turmsClient.driver
             .send {
                 $0.deleteGroupRequest = .with {
                     $0.groupID = groupId
                 }
-            }
-            .map {
-                try $0.toResponse()
-            }
+            }).toResponse()
     }
 
     /// Update the target group.
@@ -115,44 +119,44 @@ public class GroupService {
     /// - Parameters:
     ///   - groupId: The target group ID to find the group for updating.
     ///   - name: The new group name.
-    ///     If null, the group name will not be changed.
+    ///     If nil, the group name will not be changed.
     ///
     ///     Authorization:
     ///     * Whether the logged-in user can change the group name depends on the group type.
-    ///       If not null and the logged-in user does NOT have the permission to change the group name,
+    ///       If not nil and the logged-in user does NOT have the permission to change the group name,
     ///       throws ``ResponseError`` with the code ``ResponseStatusCode/notGroupMemberToUpdateGroupInfo``
     ///       or ``ResponseStatusCode/notGroupOwnerOrManagerToUpdateGroupInfo``
     ///       or ``ResponseStatusCode/notGroupOwnerToUpdateGroupInfo``.
     ///   - intro: The new group introduction.
-    ///     If null, the group introduction will not be changed.
+    ///     If nil, the group introduction will not be changed.
     ///
     ///     Authorization:
     ///     * Whether the logged-in user can change the group introduction depends on the group type.
-    ///       If not null and the logged-in user does NOT have the permission to change the group introduction,
+    ///       If not nil and the logged-in user does NOT have the permission to change the group introduction,
     ///       throws ``ResponseError`` with the code ``ResponseStatusCode/notGroupMemberToUpdateGroupInfo``
     ///       or ``ResponseStatusCode/notGroupOwnerOrManagerToUpdateGroupInfo``
     ///       or ``ResponseStatusCode/notGroupOwnerToUpdateGroupInfo``.
     ///   - announcement: The new group announcement.
-    ///     If null, the group announcement will not be changed.
+    ///     If nil, the group announcement will not be changed.
     ///
     ///     Authorization:
     ///     * Whether the logged-in user can change the group announcement depends on the group type.
-    ///       If not null and the logged-in user does NOT have the permission to change the group announcement,
+    ///       If not nil and the logged-in user does NOT have the permission to change the group announcement,
     ///       throws ``ResponseError`` with the code ``ResponseStatusCode/notGroupMemberToUpdateGroupInfo``
     ///       or ``ResponseStatusCode/notGroupOwnerOrManagerToUpdateGroupInfo``
     ///       or ``ResponseStatusCode/notGroupOwnerToUpdateGroupInfo``.
     ///   - minScore: The new group minimum score that a non-member user needs to acquire
     ///     to join the group when answering group questions.
-    ///     If null, the group minimum score will not be changed.
+    ///     If nil, the group minimum score will not be changed.
     ///
     ///     Authorization:
     ///     * Whether the logged-in user can change the group minimum score depends on the group type.
-    ///       If not null and the logged-in user does NOT have the permission to change the group minimum score,
+    ///       If not nil and the logged-in user does NOT have the permission to change the group minimum score,
     ///       throws ``ResponseError`` with the code ``ResponseStatusCode/notGroupMemberToUpdateGroupInfo``
     ///       or ``ResponseStatusCode/notGroupOwnerOrManagerToUpdateGroupInfo``
     ///       or ``ResponseStatusCode/notGroupOwnerToUpdateGroupInfo``.
     ///   - typeId: The new group type ID.
-    ///     If null, the group type ID will not be changed.
+    ///     If nil, the group type ID will not be changed.
     ///
     ///     Authorization:
     ///     * If the server property `turms.service.group.allow-group-owner-change-group-type`
@@ -180,11 +184,26 @@ public class GroupService {
     ///     ``ResponseStatusCode/groupSuccessorNotGroupMember`` otherwise.
     ///   - quitAfterTransfer: Whether to quit the group after transfer the group ownership.
     ///     If false, the logged-in user will become a normal group member (not the group admin).
-    ///     If null, the value will not be changed.
+    ///     If nil, the value will not be changed.
     ///
     ///     Authorization:
     ///     * If the logged-in user is not the owner of the group,
     ///       throws ``ResponseError`` with the code ``ResponseStatusCode/notGroupOwnerToTransferGroup``.
+    ///   - userDefinedAttributes: The user-defined attributes for upsert.
+    ///     1. The attributes must have been defined on the server side via `turms.service.group.info.user-defined-attributes.allowed-attributes`.
+    ///     Otherwise, the method will throw with ``ResponseStatusCode/illegalArgument``
+    ///     if `turms.service.group.info.user-defined-attributes.ignore-unknown-attributes-on-upsert` is false (false by default),
+    ///     or silently ignored if it is true.
+    ///     2. If trying to update existing immutable attribute, throws with ``ResponseStatusCode/illegalArgument``.
+    ///     3. Only public attributes are supported currently, which means other users can find out these attributes
+    ///     via ``queryGroups``.
+    ///
+    ///     Authorization:
+    ///     * Whether the logged-in user can change the user-defined attributes depends on the group type.
+    ///       If not nil and the logged-in user does NOT have the permission to change the group name,
+    ///       throws ``ResponseError`` with the code ``ResponseStatusCode/notGroupMemberToUpdateGroupInfo``
+    ///       or ``ResponseStatusCode/notGroupOwnerOrManagerToUpdateGroupInfo``
+    ///       or ``ResponseStatusCode/notGroupOwnerToUpdateGroupInfo``.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
     public func updateGroup(
@@ -196,52 +215,54 @@ public class GroupService {
         typeId: Int64? = nil,
         muteEndDate: Date? = nil,
         successorId: Int64? = nil,
-        quitAfterTransfer: Bool? = nil
-    ) -> Promise<Response<Void>> {
-        if Validator.areAllNil(
+        quitAfterTransfer: Bool? = nil,
+        userDefinedAttributes: [String: Value]? = nil
+    ) async throws -> Response<Void> {
+        if Validator.areAllNilOrEmpty(
             name,
             intro,
             announcement,
             minScore,
             typeId,
             muteEndDate,
-            successorId
+            successorId,
+            userDefinedAttributes
         ) {
-            return Promise.value(Response.empty())
+            return Response.empty()
         }
-        return turmsClient.driver
+        return try (await turmsClient.driver
             .send {
                 $0.updateGroupRequest = .with {
                     $0.groupID = groupId
-                    if let v = name {
-                        $0.name = v
+                    if let name {
+                        $0.name = name
                     }
-                    if let v = intro {
-                        $0.intro = v
+                    if let intro {
+                        $0.intro = intro
                     }
-                    if let v = announcement {
-                        $0.announcement = v
+                    if let announcement {
+                        $0.announcement = announcement
                     }
-                    if let v = muteEndDate {
-                        $0.muteEndDate = v.toMillis()
+                    if let muteEndDate {
+                        $0.muteEndDate = muteEndDate.toMillis()
                     }
-                    if let v = minScore {
-                        $0.minScore = v
+                    if let minScore {
+                        $0.minScore = minScore
                     }
-                    if let v = typeId {
-                        $0.typeID = v
+                    if let typeId {
+                        $0.typeID = typeId
                     }
-                    if let v = successorId {
-                        $0.successorID = v
+                    if let successorId {
+                        $0.successorID = successorId
                     }
-                    if let v = quitAfterTransfer {
-                        $0.quitAfterTransfer = v
+                    if let quitAfterTransfer {
+                        $0.quitAfterTransfer = quitAfterTransfer
+                    }
+                    if let userDefinedAttributes {
+                        $0.userDefinedAttributes = userDefinedAttributes
                     }
                 }
-            }
-            .map {
-                try $0.toResponse()
-            }
+            }).toResponse()
     }
 
     /// Transfer the group ownership.
@@ -263,23 +284,20 @@ public class GroupService {
     ///     ``ResponseStatusCode/groupSuccessorNotGroupMember`` otherwise.
     ///   - quitAfterTransfer: Whether to quit the group after transfer the group ownership.
     ///     If false, the logged-in user will become a normal group member (not the group admin).
-    ///     If null, the value will not be changed.
+    ///     If nil, the value will not be changed.
     ///     Authorization: If the logged-in user is not the owner of the group,
     ///     throws ``ResponseError`` with the code ``ResponseStatusCode/notGroupOwnerToTransferGroup``.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func transferOwnership(groupId: Int64, successorId: Int64, quitAfterTransfer: Bool = false) -> Promise<Response<Void>> {
-        return turmsClient.driver
+    public func transferOwnership(groupId: Int64, successorId: Int64, quitAfterTransfer: Bool = false) async throws -> Response<Void> {
+        return try (await turmsClient.driver
             .send {
                 $0.updateGroupRequest = .with {
                     $0.groupID = groupId
                     $0.successorID = successorId
                     $0.quitAfterTransfer = quitAfterTransfer
                 }
-            }
-            .map {
-                try $0.toResponse()
-            }
+            }).toResponse()
     }
 
     /// Mute the target group.
@@ -303,17 +321,14 @@ public class GroupService {
     ///       throws ``ResponseError`` with the code ``ResponseStatusCode/notGroupOwnerOrManagerToMuteGroupMember``.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func muteGroup(groupId: Int64, muteEndDate: Date) -> Promise<Response<Void>> {
-        return turmsClient.driver
+    public func muteGroup(groupId: Int64, muteEndDate: Date) async throws -> Response<Void> {
+        return try (await turmsClient.driver
             .send {
                 $0.updateGroupRequest = .with {
                     $0.groupID = groupId
                     $0.muteEndDate = muteEndDate.toMillis()
                 }
-            }
-            .map {
-                try $0.toResponse()
-            }
+            }).toResponse()
     }
 
     /// Unmute the target group.
@@ -334,8 +349,8 @@ public class GroupService {
     ///   - groupId: The target group ID to find the group for updating.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func unmuteGroup(_ groupId: Int64) -> Promise<Response<Void>> {
-        return muteGroup(groupId: groupId, muteEndDate: Date(timeIntervalSince1970: 0))
+    public func unmuteGroup(_ groupId: Int64) async throws -> Response<Void> {
+        return try await muteGroup(groupId: groupId, muteEndDate: Date(timeIntervalSince1970: 0))
     }
 
     /// Find groups.
@@ -344,29 +359,26 @@ public class GroupService {
     ///   - groupIds: The target group IDs for finding groups.
     ///   - lastUpdatedDate: The last updated date of groups on local.
     ///     The server will only return groups that are updated after `lastUpdatedDate`.
-    ///     If null, all groups will be returned.
+    ///     If nil, all groups will be returned.
     ///
     /// - Returns: A list of groups.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func queryGroups(groupIds: Set<Int64>, lastUpdatedDate: Date? = nil) -> Promise<Response<[Group]>> {
+    public func queryGroups(groupIds: Set<Int64>, lastUpdatedDate: Date? = nil) async throws -> Response<[Group]> {
         if groupIds.isEmpty {
-            return Promise.value(Response.emptyArray())
+            return Response.emptyArray()
         }
-        return turmsClient.driver
+        return try (await turmsClient.driver
             .send {
                 $0.queryGroupsRequest = .with {
                     $0.groupIds = Array(groupIds)
-                    if let v = lastUpdatedDate {
-                        $0.lastUpdatedDate = v.toMillis()
+                    if let lastUpdatedDate {
+                        $0.lastUpdatedDate = lastUpdatedDate.toMillis()
                     }
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    $0.groupsWithVersion.groups
-                }
-            }
+            }).toResponse {
+            $0.groupsWithVersion.groups
+        }
     }
 
     /// Search for groups.
@@ -384,31 +396,28 @@ public class GroupService {
     public func searchGroups(name: String,
                              highlight: Bool = false,
                              skip: Int32? = nil,
-                             limit: Int32? = nil) -> Promise<Response<[Group]>>
+                             limit: Int32? = nil) async throws -> Response<[Group]>
     {
         if name.isEmpty {
-            return Promise.value(Response.emptyArray())
+            return Response.emptyArray()
         }
-        return turmsClient.driver
+        return try (await turmsClient.driver
             .send {
                 $0.queryGroupsRequest = .with {
                     $0.name = name
                     if highlight {
                         $0.fieldsToHighlight = [1]
                     }
-                    if let v = skip {
-                        $0.skip = v
+                    if let skip {
+                        $0.skip = skip
                     }
-                    if let v = limit {
-                        $0.limit = v
+                    if let limit {
+                        $0.limit = limit
                     }
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    $0.groupsWithVersion.groups
-                }
-            }
+            }).toResponse {
+            $0.groupsWithVersion.groups
+        }
     }
 
     /// Find group IDs that the logged-in user has joined.
@@ -416,26 +425,23 @@ public class GroupService {
     /// - Parameters:
     ///   - lastUpdatedDate: The last updated date of group IDs that the logged-in user has joined stored locally.
     ///     The server will only return group IDs that are updated after `lastUpdatedDate`.
-    ///     If null, all group IDs will be returned.
+    ///     If nil, all group IDs will be returned.
     ///
     /// - Returns: A list of group IDs and the version.
     /// Note: The version can be used to update the last updated date on local.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func queryJoinedGroupIds(_ lastUpdatedDate: Date? = nil) -> Promise<Response<LongsWithVersion?>> {
-        return turmsClient.driver
+    public func queryJoinedGroupIds(_ lastUpdatedDate: Date? = nil) async throws -> Response<LongsWithVersion?> {
+        return try (await turmsClient.driver
             .send {
                 $0.queryJoinedGroupIdsRequest = .with {
-                    if let v = lastUpdatedDate {
-                        $0.lastUpdatedDate = v.toMillis()
+                    if let lastUpdatedDate {
+                        $0.lastUpdatedDate = lastUpdatedDate.toMillis()
                     }
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    try $0.kind?.getKindData(LongsWithVersion.self)
-                }
-            }
+            }).toResponse {
+            try $0.kind?.getKindData(LongsWithVersion.self)
+        }
     }
 
     /// Find groups that the logged-in user has joined.
@@ -443,23 +449,20 @@ public class GroupService {
     /// - Parameters:
     ///   - lastUpdatedDate: The last updated date of groups that the logged-in user has joined stored locally.
     ///     The server will only return groups that are updated after `lastUpdatedDate`.
-    ///     If null, all groups will be returned.
+    ///     If nil, all groups will be returned.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func queryJoinedGroupInfos(_ lastUpdatedDate: Date? = nil) -> Promise<Response<GroupsWithVersion?>> {
-        return turmsClient.driver
+    public func queryJoinedGroupInfos(_ lastUpdatedDate: Date? = nil) async throws -> Response<GroupsWithVersion?> {
+        return try (await turmsClient.driver
             .send {
                 $0.queryJoinedGroupInfosRequest = .with {
-                    if let v = lastUpdatedDate {
-                        $0.lastUpdatedDate = v.toMillis()
+                    if let lastUpdatedDate {
+                        $0.lastUpdatedDate = lastUpdatedDate.toMillis()
                     }
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    try $0.kind?.getKindData(GroupsWithVersion.self)
-                }
-            }
+            }).toResponse {
+            try $0.kind?.getKindData(GroupsWithVersion.self)
+        }
     }
 
     /// Add group join/membership questions.
@@ -482,11 +485,11 @@ public class GroupService {
     /// - Returns: New group questions IDs.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func addGroupJoinQuestions(groupId: Int64, questions: [NewGroupJoinQuestion]) -> Promise<Response<[Int64]>> {
+    public func addGroupJoinQuestions(groupId: Int64, questions: [NewGroupJoinQuestion]) async throws -> Response<[Int64]> {
         if questions.isEmpty {
-            return Promise.value(Response.emptyArray())
+            return Response.emptyArray()
         }
-        return turmsClient.driver
+        return try (await turmsClient.driver
             .send {
                 $0.createGroupJoinQuestionsRequest = try .with {
                     $0.groupID = groupId
@@ -510,12 +513,9 @@ public class GroupService {
                         }
                     }
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    $0.longsWithVersion.longs
-                }
-            }
+            }).toResponse {
+            $0.longsWithVersion.longs
+        }
     }
 
     /// Delete group join/membership questions.
@@ -529,20 +529,17 @@ public class GroupService {
     ///   - questionIds: The group membership question IDs.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func deleteGroupJoinQuestions(groupId: Int64, questionIds: [Int64]) -> Promise<Response<Void>> {
+    public func deleteGroupJoinQuestions(groupId: Int64, questionIds: [Int64]) async throws -> Response<Void> {
         if questionIds.isEmpty {
-            return Promise.value(Response.empty())
+            return Response.empty()
         }
-        return turmsClient.driver
+        return try (await turmsClient.driver
             .send {
                 $0.deleteGroupJoinQuestionsRequest = .with {
                     $0.groupID = groupId
                     $0.questionIds = questionIds
                 }
-            }
-            .map {
-                try $0.toResponse()
-            }
+            }).toResponse()
     }
 
     /// Update group join/membership questions.
@@ -554,35 +551,32 @@ public class GroupService {
     /// - Parameters:
     ///   - questionId: The target question ID.
     ///   - question: The question.
-    ///     If null, the question will not be updated.
+    ///     If nil, the question will not be updated.
     ///   - answers: The answers.
-    ///     If null, the answers will not be updated.
+    ///     If nil or empty, the answers will not be updated.
     ///   - score: The score.
-    ///     If null, the score will not be updated.
+    ///     If nil, the score will not be updated.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func updateGroupJoinQuestion(questionId: Int64, question: String? = nil, answers: [String]? = nil, score: Int32? = nil) -> Promise<Response<Void>> {
-        if Validator.areAllNil(question, answers, score) {
-            return Promise.value(Response.empty())
+    public func updateGroupJoinQuestion(questionId: Int64, question: String? = nil, answers: [String]? = nil, score: Int32? = nil) async throws -> Response<Void> {
+        if Validator.areAllNilOrEmpty(question, answers, score) {
+            return Response.empty()
         }
-        return turmsClient.driver
+        return try (await turmsClient.driver
             .send {
                 $0.updateGroupJoinQuestionRequest = .with {
                     $0.questionID = questionId
-                    if let v = question {
-                        $0.question = v
+                    if let question {
+                        $0.question = question
                     }
-                    if let v = answers {
-                        $0.answers = v
+                    if let answers {
+                        $0.answers = answers
                     }
-                    if let v = score {
-                        $0.score = v
+                    if let score {
+                        $0.score = score
                     }
                 }
-            }
-            .map {
-                try $0.toResponse()
-            }
+            }).toResponse()
     }
 
     // Group Blocklist
@@ -609,17 +603,14 @@ public class GroupService {
     ///   - userId: The target user ID.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func blockUser(groupId: Int64, userId: Int64) -> Promise<Response<Void>> {
-        return turmsClient.driver
+    public func blockUser(groupId: Int64, userId: Int64) async throws -> Response<Void> {
+        return try (await turmsClient.driver
             .send {
                 $0.createGroupBlockedUserRequest = .with {
                     $0.userID = userId
                     $0.groupID = groupId
                 }
-            }
-            .map {
-                try $0.toResponse()
-            }
+            }).toResponse()
     }
 
     /// Unblock a user in the group.
@@ -641,17 +632,14 @@ public class GroupService {
     ///   - userId: The target user ID.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func unblockUser(groupId: Int64, userId: Int64) -> Promise<Response<Void>> {
-        return turmsClient.driver
+    public func unblockUser(groupId: Int64, userId: Int64) async throws -> Response<Void> {
+        return try (await turmsClient.driver
             .send {
                 $0.deleteGroupBlockedUserRequest = .with {
                     $0.groupID = groupId
                     $0.userID = userId
                 }
-            }
-            .map {
-                try $0.toResponse()
-            }
+            }).toResponse()
     }
 
     /// Find blocked user IDs.
@@ -660,27 +648,24 @@ public class GroupService {
     ///   - groupId: The target group ID.
     ///   - lastUpdatedDate: The last updated date of blocked user IDs stored locally.
     ///     The server will only return blocked user IDs that are updated after `lastUpdatedDate`.
-    ///     If null, all blocked user IDs will be returned.
+    ///     If nil, all blocked user IDs will be returned.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
     public func queryBlockedUserIds(
         groupId: Int64,
         lastUpdatedDate: Date? = nil
-    ) -> Promise<Response<LongsWithVersion?>> {
-        return turmsClient.driver
+    ) async throws -> Response<LongsWithVersion?> {
+        return try (await turmsClient.driver
             .send {
                 $0.queryGroupBlockedUserIdsRequest = .with {
                     $0.groupID = groupId
-                    if let v = lastUpdatedDate {
-                        $0.lastUpdatedDate = v.toMillis()
+                    if let lastUpdatedDate {
+                        $0.lastUpdatedDate = lastUpdatedDate.toMillis()
                     }
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    try $0.kind?.getKindData(LongsWithVersion.self)
-                }
-            }
+            }).toResponse {
+            try $0.kind?.getKindData(LongsWithVersion.self)
+        }
     }
 
     /// Find blocked user infos.
@@ -689,27 +674,24 @@ public class GroupService {
     ///   - groupId: The target group ID.
     ///   - lastUpdatedDate: The last updated date of blocked user infos stored locally.
     ///     The server will only return blocked user infos that are updated after `lastUpdatedDate`.
-    ///     If null, all blocked user infos will be returned.
+    ///     If nil, all blocked user infos will be returned.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
     public func queryBlockedUserInfos(
         groupId: Int64,
         lastUpdatedDate: Date? = nil
-    ) -> Promise<Response<UserInfosWithVersion?>> {
-        return turmsClient.driver
+    ) async throws -> Response<UserInfosWithVersion?> {
+        return try (await turmsClient.driver
             .send {
                 $0.queryGroupBlockedUserInfosRequest = .with {
                     $0.groupID = groupId
-                    if let v = lastUpdatedDate {
-                        $0.lastUpdatedDate = v.toMillis()
+                    if let lastUpdatedDate {
+                        $0.lastUpdatedDate = lastUpdatedDate.toMillis()
                     }
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    try $0.kind?.getKindData(UserInfosWithVersion.self)
-                }
-            }
+            }).toResponse {
+            try $0.kind?.getKindData(UserInfosWithVersion.self)
+        }
     }
 
     // Group Enrollment
@@ -747,20 +729,17 @@ public class GroupService {
     /// - Returns: The invitation ID.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func createInvitation(groupId: Int64, inviteeId: Int64, content: String) -> Promise<Response<Int64>> {
-        return turmsClient.driver
+    public func createInvitation(groupId: Int64, inviteeId: Int64, content: String) async throws -> Response<Int64> {
+        return try (await turmsClient.driver
             .send {
                 $0.createGroupInvitationRequest = .with {
                     $0.groupID = groupId
                     $0.inviteeID = inviteeId
                     $0.content = content
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    try $0.getLongOrThrow()
-                }
-            }
+            }).toResponse {
+            try $0.getLongOrThrow()
+        }
     }
 
     /// Delete/Recall an invitation.
@@ -790,16 +769,13 @@ public class GroupService {
     ///   is true (true by default), the server will send a delete invitation notification to the target user actively.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func deleteInvitation(_ invitationId: Int64) -> Promise<Response<Void>> {
-        return turmsClient.driver
+    public func deleteInvitation(_ invitationId: Int64) async throws -> Response<Void> {
+        return try (await turmsClient.driver
             .send {
                 $0.deleteGroupInvitationRequest = .with {
                     $0.invitationID = invitationId
                 }
-            }
-            .map {
-                try $0.toResponse()
-            }
+            }).toResponse()
     }
 
     /// Reply to a group invitation.
@@ -829,20 +805,17 @@ public class GroupService {
     ///   - reason: The reason of the response.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func replyInvitation(invitationId: Int64, responseAction: ResponseAction, reason: String? = nil) -> Promise<Response<Void>> {
-        return turmsClient.driver
+    public func replyInvitation(invitationId: Int64, responseAction: ResponseAction, reason: String? = nil) async throws -> Response<Void> {
+        return try (await turmsClient.driver
             .send {
                 $0.updateGroupInvitationRequest = .with {
                     $0.invitationID = invitationId
                     $0.responseAction = responseAction
-                    if let v = reason {
-                        $0.reason = v
+                    if let reason {
+                        $0.reason = reason
                     }
                 }
-            }
-            .map {
-                try $0.toResponse()
-            }
+            }).toResponse()
     }
 
     /// Find invitations.
@@ -851,27 +824,24 @@ public class GroupService {
     ///   - groupId: The target group ID.
     ///   - lastUpdatedDate: The last updated date of invitations stored locally.
     ///     The server will only return groups that are updated after `lastUpdatedDate`.
-    ///     If null, all group IDs will be returned.
+    ///     If nil, all group IDs will be returned.
     ///
     /// - Returns: A list of invitation IDs and the version.
     /// Note: The version can be used to update the last updated date stored locally.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func queryInvitations(groupId: Int64, lastUpdatedDate: Date? = nil) -> Promise<Response<GroupInvitationsWithVersion?>> {
-        return turmsClient.driver
+    public func queryInvitations(groupId: Int64, lastUpdatedDate: Date? = nil) async throws -> Response<GroupInvitationsWithVersion?> {
+        return try (await turmsClient.driver
             .send {
                 $0.queryGroupInvitationsRequest = .with {
                     $0.groupID = groupId
-                    if let v = lastUpdatedDate {
-                        $0.lastUpdatedDate = v.toMillis()
+                    if let lastUpdatedDate {
+                        $0.lastUpdatedDate = lastUpdatedDate.toMillis()
                     }
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    try $0.kind?.getKindData(GroupInvitationsWithVersion.self)
-                }
-            }
+            }).toResponse {
+            try $0.kind?.getKindData(GroupInvitationsWithVersion.self)
+        }
     }
 
     /// Find invitations.
@@ -880,27 +850,24 @@ public class GroupService {
     ///   - areSentByMe: Whether the invitations are sent by me.
     ///   - lastUpdatedDate: The last updated date of invitations stored locally.
     ///     The server will only return invitations that are updated after `lastUpdatedDate`.
-    ///     If null, all invitations will be returned.
+    ///     If nil, all invitations will be returned.
     ///
     /// - Returns: A list of invitation IDs and the version.
     /// Note: The version can be used to update the last updated date stored locally.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func queryInvitations(areSentByMe: Bool, lastUpdatedDate: Date? = nil) -> Promise<Response<GroupInvitationsWithVersion?>> {
-        return turmsClient.driver
+    public func queryInvitations(areSentByMe: Bool, lastUpdatedDate: Date? = nil) async throws -> Response<GroupInvitationsWithVersion?> {
+        return try (await turmsClient.driver
             .send {
                 $0.queryGroupInvitationsRequest = .with {
                     $0.areSentByMe = areSentByMe
-                    if let v = lastUpdatedDate {
-                        $0.lastUpdatedDate = v.toMillis()
+                    if let lastUpdatedDate {
+                        $0.lastUpdatedDate = lastUpdatedDate.toMillis()
                     }
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    try $0.kind?.getKindData(GroupInvitationsWithVersion.self)
-                }
-            }
+            }).toResponse {
+            try $0.kind?.getKindData(GroupInvitationsWithVersion.self)
+        }
     }
 
     /// Create a group join/membership request.
@@ -932,19 +899,16 @@ public class GroupService {
     /// - Returns: The request ID.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func createJoinRequest(groupId: Int64, content: String) -> Promise<Response<Int64>> {
-        return turmsClient.driver
+    public func createJoinRequest(groupId: Int64, content: String) async throws -> Response<Int64> {
+        return try (await turmsClient.driver
             .send {
                 $0.createGroupJoinRequestRequest = .with {
                     $0.groupID = groupId
                     $0.content = content
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    try $0.getLongOrThrow()
-                }
-            }
+            }).toResponse {
+            try $0.getLongOrThrow()
+        }
     }
 
     /// Delete/Recall a group join/membership request.
@@ -967,16 +931,13 @@ public class GroupService {
     ///   is true (false by default), the server will send a delete join request notification to all group members of the target group actively.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func deleteJoinRequest(_ requestId: Int64) -> Promise<Response<Void>> {
-        return turmsClient.driver
+    public func deleteJoinRequest(_ requestId: Int64) async throws -> Response<Void> {
+        return try (await turmsClient.driver
             .send {
                 $0.deleteGroupJoinRequestRequest = .with {
                     $0.requestID = requestId
                 }
-            }
-            .map {
-                try $0.toResponse()
-            }
+            }).toResponse()
     }
 
     /// Reply a group join/membership request.
@@ -1006,20 +967,17 @@ public class GroupService {
     ///   - reason: The reason of the response.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func replyJoinRequest(requestId: Int64, responseAction: ResponseAction, reason: String? = nil) -> Promise<Response<Void>> {
-        return turmsClient.driver
+    public func replyJoinRequest(requestId: Int64, responseAction: ResponseAction, reason: String? = nil) async throws -> Response<Void> {
+        return try (await turmsClient.driver
             .send {
                 $0.updateGroupJoinRequestRequest = .with {
                     $0.requestID = requestId
                     $0.responseAction = responseAction
-                    if let v = reason {
-                        $0.reason = v
+                    if let reason {
+                        $0.reason = reason
                     }
                 }
-            }
-            .map {
-                try $0.toResponse()
-            }
+            }).toResponse()
     }
 
     /// Find group join/membership requests.
@@ -1028,27 +986,24 @@ public class GroupService {
     ///   - groupId: The target group ID.
     ///   - lastUpdatedDate: The last updated date of requests stored locally.
     ///     The server will only return requests that are updated after `lastUpdatedDate`.
-    ///     If null, all requests will be returned.
+    ///     If nil, all requests will be returned.
     ///
     /// - Returns: A list of request IDs and the version.
     /// Note: The version can be used to update the last updated date stored locally.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func queryJoinRequests(groupId: Int64, lastUpdatedDate: Date? = nil) -> Promise<Response<GroupJoinRequestsWithVersion?>> {
-        return turmsClient.driver
+    public func queryJoinRequests(groupId: Int64, lastUpdatedDate: Date? = nil) async throws -> Response<GroupJoinRequestsWithVersion?> {
+        return try (await turmsClient.driver
             .send {
                 $0.queryGroupJoinRequestsRequest = .with {
                     $0.groupID = groupId
-                    if let v = lastUpdatedDate {
-                        $0.lastUpdatedDate = v.toMillis()
+                    if let lastUpdatedDate {
+                        $0.lastUpdatedDate = lastUpdatedDate.toMillis()
                     }
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    try $0.kind?.getKindData(GroupJoinRequestsWithVersion.self)
-                }
-            }
+            }).toResponse {
+            try $0.kind?.getKindData(GroupJoinRequestsWithVersion.self)
+        }
     }
 
     /// Find group join/membership requests sent by the logged-in user.
@@ -1056,26 +1011,23 @@ public class GroupService {
     /// - Parameters:
     ///   - lastUpdatedDate: The last updated date of requests stored locally.
     ///     The server will only return requests that are updated after `lastUpdatedDate`.
-    ///     If null, all requests will be returned.
+    ///     If nil, all requests will be returned.
     ///
     /// - Returns: A list of request IDs and the version.
     /// Note: The version can be used to update the last updated date stored locally.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func querySentJoinRequests(lastUpdatedDate: Date? = nil) -> Promise<Response<GroupJoinRequestsWithVersion?>> {
-        return turmsClient.driver
+    public func querySentJoinRequests(lastUpdatedDate: Date? = nil) async throws -> Response<GroupJoinRequestsWithVersion?> {
+        return try (await turmsClient.driver
             .send {
                 $0.queryGroupJoinRequestsRequest = .with {
-                    if let v = lastUpdatedDate {
-                        $0.lastUpdatedDate = v.toMillis()
+                    if let lastUpdatedDate {
+                        $0.lastUpdatedDate = lastUpdatedDate.toMillis()
                     }
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    try $0.kind?.getKindData(GroupJoinRequestsWithVersion.self)
-                }
-            }
+            }).toResponse {
+            try $0.kind?.getKindData(GroupJoinRequestsWithVersion.self)
+        }
     }
 
     /// Find group join/membership questions.
@@ -1088,7 +1040,7 @@ public class GroupService {
     ///   - withAnswers: Whether to return the answers.
     ///   - lastUpdatedDate: The last updated date of questions stored locally.
     ///     The server will only return questions that are updated after `lastUpdatedDate`.
-    ///     If null, all questions will be returned.
+    ///     If nil, all questions will be returned.
     ///
     /// - Returns: A list of question IDs and the version.
     /// Note: The version can be used to update the last updated date stored locally.
@@ -1098,22 +1050,19 @@ public class GroupService {
         groupId: Int64,
         withAnswers: Bool = false,
         lastUpdatedDate: Date? = nil
-    ) -> Promise<Response<GroupJoinQuestionsWithVersion?>> {
-        return turmsClient.driver
+    ) async throws -> Response<GroupJoinQuestionsWithVersion?> {
+        return try (await turmsClient.driver
             .send {
                 $0.queryGroupJoinQuestionsRequest = .with {
                     $0.groupID = groupId
                     $0.withAnswers = withAnswers
-                    if let v = lastUpdatedDate {
-                        $0.lastUpdatedDate = v.toMillis()
+                    if let lastUpdatedDate {
+                        $0.lastUpdatedDate = lastUpdatedDate.toMillis()
                     }
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    try $0.kind?.getKindData(GroupJoinQuestionsWithVersion.self)
-                }
-            }
+            }).toResponse {
+            try $0.kind?.getKindData(GroupJoinQuestionsWithVersion.self)
+        }
     }
 
     /// Answer group join/membership questions, and join the group automatically
@@ -1126,26 +1075,23 @@ public class GroupService {
     /// - Returns: The group membership questions answer result.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func answerGroupQuestions(_ questionIdToAnswer: [Int64: String]) -> Promise<Response<GroupJoinQuestionsAnswerResult>> {
+    public func answerGroupQuestions(_ questionIdToAnswer: [Int64: String]) async throws -> Response<GroupJoinQuestionsAnswerResult> {
         if questionIdToAnswer.isEmpty {
-            return Promise.value(Response.value(GroupJoinQuestionsAnswerResult()))
+            return Response.value(GroupJoinQuestionsAnswerResult())
         }
-        return turmsClient.driver
+        return try (await turmsClient.driver
             .send {
                 $0.checkGroupJoinQuestionsAnswersRequest = .with {
                     $0.questionIDToAnswer = questionIdToAnswer
                 }
+            }).toResponse {
+            let result = try $0.kind?.getKindData(GroupJoinQuestionsAnswerResult.self)
+            if let result {
+                return result
+            } else {
+                throw ResponseError(code: ResponseStatusCode.invalidResponse)
             }
-            .map {
-                try $0.toResponse {
-                    let result = try $0.kind?.getKindData(GroupJoinQuestionsAnswerResult.self)
-                    if let value = result {
-                        return value
-                    } else {
-                        throw ResponseError(code: ResponseStatusCode.invalidResponse)
-                    }
-                }
-            }
+        }
     }
 
     // Group Member
@@ -1196,29 +1142,26 @@ public class GroupService {
         name: String? = nil,
         role: GroupMemberRole? = nil,
         muteEndDate: Date? = nil
-    ) -> Promise<Response<Void>> {
+    ) async throws -> Response<Void> {
         if userIds.isEmpty {
-            return Promise.value(Response.empty())
+            return Response.empty()
         }
-        return turmsClient.driver
+        return try (await turmsClient.driver
             .send {
                 $0.createGroupMembersRequest = .with {
                     $0.groupID = groupId
                     $0.userIds = userIds
-                    if let v = name {
-                        $0.name = v
+                    if let name {
+                        $0.name = name
                     }
-                    if let v = role {
-                        $0.role = v
+                    if let role {
+                        $0.role = role
                     }
-                    if let v = muteEndDate {
-                        $0.muteEndDate = v.toMillis()
+                    if let muteEndDate {
+                        $0.muteEndDate = muteEndDate.toMillis()
                     }
                 }
-            }
-            .map {
-                try $0.toResponse()
-            }
+            }).toResponse()
     }
 
     /// Join a group.
@@ -1244,11 +1187,11 @@ public class GroupService {
     ///   - name: The name as the group member.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func joinGroup(groupId: Int64, name: String? = nil) -> Promise<Response<Void>> {
+    public func joinGroup(groupId: Int64, name: String? = nil) async throws -> Response<Void> {
         guard let info = turmsClient.userService.userInfo else {
-            return Promise(error: ResponseError(code: .clientSessionHasBeenClosed))
+            throw ResponseError(code: .clientSessionHasBeenClosed)
         }
-        return addGroupMembers(groupId: groupId, userIds: [info.userId], name: name)
+        return try await addGroupMembers(groupId: groupId, userIds: [info.userId], name: name)
     }
 
     /// Quit a group.
@@ -1269,30 +1212,27 @@ public class GroupService {
     ///     ``ResponseStatusCode/groupSuccessorNotGroupMember`` otherwise.
     ///   - quitAfterTransfer: Whether to quit the group after transfer the group ownership.
     ///     If false, the logged-in user will become a normal group member (not the group admin).
-    ///     If null, the value will not be changed.
+    ///     If nil, the value will not be changed.
     ///
     ///     Authorization:
     ///     * If the logged-in user is not the owner of the group,
     ///       ``ResponseError`` with the code ``ResponseStatusCode/notGroupOwnerToTransferGroup`` will be thrown.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func quitGroup(groupId: Int64, successorId: Int64? = nil, quitAfterTransfer: Bool? = nil) -> Promise<Response<Void>> {
-        return turmsClient.driver
+    public func quitGroup(groupId: Int64, successorId: Int64? = nil, quitAfterTransfer: Bool? = nil) async throws -> Response<Void> {
+        return try (await turmsClient.driver
             .send {
                 $0.deleteGroupMembersRequest = .with {
                     $0.groupID = groupId
                     $0.memberIds = [turmsClient.userService.userInfo!.userId]
-                    if let v = successorId {
-                        $0.successorID = v
+                    if let successorId {
+                        $0.successorID = successorId
                     }
-                    if let v = quitAfterTransfer {
-                        $0.quitAfterTransfer = v
+                    if let quitAfterTransfer {
+                        $0.quitAfterTransfer = quitAfterTransfer
                     }
                 }
-            }
-            .map {
-                try $0.toResponse()
-            }
+            }).toResponse()
     }
 
     /// Remove group members.
@@ -1314,20 +1254,17 @@ public class GroupService {
     ///   - memberIds: The target member IDs.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func removeGroupMembers(groupId: Int64, memberIds: [Int64]) -> Promise<Response<Void>> {
+    public func removeGroupMembers(groupId: Int64, memberIds: [Int64]) async throws -> Response<Void> {
         if memberIds.isEmpty {
-            return Promise.value(Response.empty())
+            return Response.empty()
         }
-        return turmsClient.driver
+        return try (await turmsClient.driver
             .send {
                 $0.deleteGroupMembersRequest = .with {
                     $0.groupID = groupId
                     $0.memberIds = memberIds
                 }
-            }
-            .map {
-                try $0.toResponse()
-            }
+            }).toResponse()
     }
 
     /// Remove a group member.
@@ -1349,8 +1286,8 @@ public class GroupService {
     ///   - memberId: The target member ID.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func removeGroupMember(groupId: Int64, memberId: Int64) -> Promise<Response<Void>> {
-        return removeGroupMembers(groupId: groupId, memberIds: [memberId])
+    public func removeGroupMember(groupId: Int64, memberId: Int64) async throws -> Response<Void> {
+        return try await removeGroupMembers(groupId: groupId, memberIds: [memberId])
     }
 
     /// Update group member info.
@@ -1371,11 +1308,11 @@ public class GroupService {
     ///   - groupId: The target group ID.
     ///   - memberId: The target member ID.
     ///   - name: The new name of the group member.
-    ///     If null, the name will not be updated.
+    ///     If nil, the name will not be updated.
     ///   - role: The new role of the group member.
-    ///     If null, the role will not be updated.
+    ///     If nil, the role will not be updated.
     ///   - muteEndDate: The new mute end date of the group member.
-    ///     If null, the mute end date will not be updated.
+    ///     If nil, the mute end date will not be updated.
     ///
     ///     Authorization:
     ///     * If the logged-in user is not the group owner or manager of the group,
@@ -1390,29 +1327,26 @@ public class GroupService {
         name: String? = nil,
         role: GroupMemberRole? = nil,
         muteEndDate: Date? = nil
-    ) -> Promise<Response<Void>> {
+    ) async throws -> Response<Void> {
         if Validator.areAllNil(name, role, muteEndDate) {
-            return Promise.value(Response.empty())
+            return Response.empty()
         }
-        return turmsClient.driver
+        return try (await turmsClient.driver
             .send {
                 $0.updateGroupMemberRequest = .with {
                     $0.groupID = groupId
                     $0.memberID = memberId
-                    if let v = name {
-                        $0.name = v
+                    if let name {
+                        $0.name = name
                     }
-                    if let v = role {
-                        $0.role = v
+                    if let role {
+                        $0.role = role
                     }
-                    if let v = muteEndDate {
-                        $0.muteEndDate = v.toMillis()
+                    if let muteEndDate {
+                        $0.muteEndDate = muteEndDate.toMillis()
                     }
                 }
-            }
-            .map {
-                try $0.toResponse()
-            }
+            }).toResponse()
     }
 
     /// Mute group member.
@@ -1437,8 +1371,8 @@ public class GroupService {
     ///   - muteEndDate: The new mute end date of the group member.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func muteGroupMember(groupId: Int64, memberId: Int64, muteEndDate: Date) -> Promise<Response<Void>> {
-        return updateGroupMemberInfo(
+    public func muteGroupMember(groupId: Int64, memberId: Int64, muteEndDate: Date) async throws -> Response<Void> {
+        return try await updateGroupMemberInfo(
             groupId: groupId,
             memberId: memberId,
             muteEndDate: muteEndDate
@@ -1466,8 +1400,8 @@ public class GroupService {
     ///   - memberId: The target member ID.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func unmuteGroupMember(groupId: Int64, memberId: Int64) -> Promise<Response<Void>> {
-        return muteGroupMember(
+    public func unmuteGroupMember(groupId: Int64, memberId: Int64) async throws -> Response<Void> {
+        return try await muteGroupMember(
             groupId: groupId,
             memberId: memberId,
             muteEndDate: Date(timeIntervalSince1970: 0)
@@ -1481,28 +1415,25 @@ public class GroupService {
     ///   - withStatus: Whether to return the session status of the group members.
     ///   - lastUpdatedDate: The last updated date of the group members stored locally.
     ///     The server will only return group members that are updated after `lastUpdatedDate`.
-    ///     If null, all group members will be returned.
+    ///     If nil, all group members will be returned.
     ///
     /// - Returns: Group members and the version.
     /// Note: The version can be used to update the last updated date stored locally.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func queryGroupMembers(groupId: Int64, withStatus: Bool = false, lastUpdatedDate: Date? = nil) -> Promise<Response<GroupMembersWithVersion?>> {
-        return turmsClient.driver
+    public func queryGroupMembers(groupId: Int64, withStatus: Bool = false, lastUpdatedDate: Date? = nil) async throws -> Response<GroupMembersWithVersion?> {
+        return try (await turmsClient.driver
             .send {
                 $0.queryGroupMembersRequest = .with {
                     $0.groupID = groupId
-                    if let v = lastUpdatedDate {
-                        $0.lastUpdatedDate = v.toMillis()
+                    if let lastUpdatedDate {
+                        $0.lastUpdatedDate = lastUpdatedDate.toMillis()
                     }
                     $0.withStatus = withStatus
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    try $0.kind?.getKindData(GroupMembersWithVersion.self)
-                }
-            }
+            }).toResponse {
+            try $0.kind?.getKindData(GroupMembersWithVersion.self)
+        }
     }
 
     /// Find group members.
@@ -1516,19 +1447,16 @@ public class GroupService {
     /// Note: The version can be used to update the last updated date stored locally.
     ///
     /// - Throws: ``ResponseError`` if an error occurs.
-    public func queryGroupMembersByMemberIds(groupId: Int64, memberIds: [Int64], withStatus: Bool = false) -> Promise<Response<GroupMembersWithVersion?>> {
-        return turmsClient.driver
+    public func queryGroupMembersByMemberIds(groupId: Int64, memberIds: [Int64], withStatus: Bool = false) async throws -> Response<GroupMembersWithVersion?> {
+        return try (await turmsClient.driver
             .send {
                 $0.queryGroupMembersRequest = .with {
                     $0.groupID = groupId
                     $0.memberIds = memberIds
                     $0.withStatus = withStatus
                 }
-            }
-            .map {
-                try $0.toResponse {
-                    try $0.kind?.getKindData(GroupMembersWithVersion.self)
-                }
-            }
+            }).toResponse {
+            try $0.kind?.getKindData(GroupMembersWithVersion.self)
+        }
     }
 }

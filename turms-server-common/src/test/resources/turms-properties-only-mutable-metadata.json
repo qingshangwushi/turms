@@ -33,6 +33,16 @@
           "type": "boolean"
         }
       },
+      "debug": {
+        "enabled": {
+          "deprecated": false,
+          "description": "Whether to enable debug APIs",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean"
+        }
+      },
       "http": {},
       "log": {
         "enabled": {
@@ -165,6 +175,16 @@
           "deprecated": false,
           "description": "Whether to attach the local port to the host.\ne.g. The local host is 100.131.251.96, and the port is 9510 so the service address will be 100.131.251.96:9510",
           "global": false,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean"
+        }
+      },
+      "debug": {
+        "enabled": {
+          "deprecated": false,
+          "description": "Whether to enable debug APIs",
+          "global": true,
           "mutable": true,
           "sensitive": false,
           "type": "boolean"
@@ -554,6 +574,108 @@
       "compression": {}
     }
   },
+  "mockNode": {
+    "adminApi": {
+      "address": {
+        "advertiseHost": {
+          "deprecated": false,
+          "description": "The advertise address of the local node exposed to admins. (e.g. 100.131.251.96)",
+          "global": false,
+          "mutable": true,
+          "sensitive": false,
+          "type": "string"
+        },
+        "advertiseStrategy": {
+          "deprecated": false,
+          "description": "The advertise strategy is used to decide which type of address should be used so that admins can access admin APIs and metrics APIs",
+          "global": false,
+          "mutable": true,
+          "options": [
+            "ADVERTISE_ADDRESS",
+            "BIND_ADDRESS",
+            "PRIVATE_ADDRESS",
+            "PUBLIC_ADDRESS"
+          ],
+          "sensitive": false,
+          "type": "enum"
+        },
+        "attachPortToHost": {
+          "deprecated": false,
+          "description": "Whether to attach the local port to the host.\ne.g. The local host is 100.131.251.96, and the port is 9510 so the service address will be 100.131.251.96:9510",
+          "global": false,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean"
+        }
+      },
+      "debug": {
+        "enabled": {
+          "deprecated": false,
+          "description": "Whether to enable debug APIs",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean"
+        }
+      },
+      "http": {},
+      "log": {
+        "enabled": {
+          "deprecated": false,
+          "description": "Whether to log API calls",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean"
+        },
+        "logRequestParams": {
+          "deprecated": false,
+          "description": "Whether to log the parameters of requests",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean"
+        }
+      },
+      "rateLimiting": {
+        "capacity": {
+          "deprecated": false,
+          "description": "The maximum number of tokens that the bucket can hold",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int"
+        },
+        "initialTokens": {
+          "deprecated": false,
+          "description": "The initial number of tokens for new session",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int"
+        },
+        "refillIntervalMillis": {
+          "deprecated": false,
+          "description": "The time interval to refill. 0 means never refill",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int"
+        },
+        "tokensPerPeriod": {
+          "deprecated": false,
+          "description": "Refills the bucket with the specified number of tokens per period if the bucket is not full",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int"
+        }
+      }
+    },
+    "mongo": {
+      "admin": {}
+    }
+  },
   "plugin": {
     "java": {},
     "js": {
@@ -623,6 +745,16 @@
         "mutable": true,
         "sensitive": false,
         "type": "boolean"
+      },
+      "debug": {
+        "enabled": {
+          "deprecated": false,
+          "description": "Whether to enable debug APIs",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean"
+        }
       },
       "defaultAvailableRecordsPerRequest": {
         "deprecated": false,
@@ -866,15 +998,6 @@
       }
     },
     "conversation": {
-      "allowedSettings": {
-        "deprecated": false,
-        "description": "The list of allowed conversation settings",
-        "elementType": "im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingProperties",
-        "global": true,
-        "mutable": true,
-        "sensitive": false,
-        "type": "java.util.List"
-      },
       "readReceipt": {
         "allowMoveReadDateForward": {
           "deprecated": false,
@@ -911,6 +1034,33 @@
         "useServerTime": {
           "deprecated": false,
           "description": "Whether to use the server time to set the last read date when updating",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean"
+        }
+      },
+      "settings": {
+        "allowedSettings": {
+          "deprecated": false,
+          "description": "The list of allowed settings",
+          "elementType": "im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingProperties",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "java.util.List"
+        },
+        "ignoreUnknownSettingsOnDelete": {
+          "deprecated": false,
+          "description": "Whether to ignore unknown settings on delete. If false, the server will throw if the request specifies an unknown setting. If true, the server will ignore the unknown settings, and continue to process the request",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean"
+        },
+        "ignoreUnknownSettingsOnUpsert": {
+          "deprecated": false,
+          "description": "Whether to ignore unknown settings on upsert. If false, the server will throw if the request specifies an unknown setting. If true, the server will ignore the unknown settings, and continue to process the request",
           "global": true,
           "mutable": true,
           "sensitive": false,
@@ -967,6 +1117,27 @@
         "mutable": true,
         "sensitive": false,
         "type": "boolean"
+      },
+      "info": {
+        "userDefinedAttributes": {
+          "allowedAttributes": {
+            "deprecated": false,
+            "description": "The list of allowed attributes",
+            "elementType": "im.turms.server.common.infra.property.env.service.business.common.userdefinedattribute.UserDefinedAttributeProperties",
+            "global": true,
+            "mutable": true,
+            "sensitive": false,
+            "type": "java.util.List"
+          },
+          "ignoreUnknownAttributesOnUpsert": {
+            "deprecated": false,
+            "description": "Whether to ignore unknown attributes on upsert. If false, the server will throw if the request specifies an unknown attribute. If true, the server will ignore the unknown attributes, and continue to process the request",
+            "global": true,
+            "mutable": true,
+            "sensitive": false,
+            "type": "boolean"
+          }
+        }
       },
       "invitation": {
         "allowRecallPendingInvitationByOwnerAndManager": {
@@ -2073,15 +2244,6 @@
         "sensitive": false,
         "type": "boolean"
       },
-      "allowedSettings": {
-        "deprecated": false,
-        "description": "The list of allowed user settings",
-        "elementType": "im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingProperties",
-        "global": true,
-        "mutable": true,
-        "sensitive": false,
-        "type": "java.util.List"
-      },
       "deleteTwoSidedRelationships": {
         "deprecated": false,
         "description": "Whether to delete the two-sided relationships when a user requests to delete a relationship",
@@ -2148,45 +2310,66 @@
           "type": "int"
         }
       },
-      "maxIntroLength": {
-        "deprecated": false,
-        "description": "The maximum allowed length for a user's intro",
-        "global": true,
-        "mutable": true,
-        "sensitive": false,
-        "type": "int"
-      },
-      "maxNameLength": {
-        "deprecated": false,
-        "description": "The maximum allowed length for a user's name",
-        "global": true,
-        "mutable": true,
-        "sensitive": false,
-        "type": "int"
-      },
-      "maxPasswordLength": {
-        "deprecated": false,
-        "description": "The maximum allowed length for a user's password",
-        "global": true,
-        "mutable": true,
-        "sensitive": false,
-        "type": "int"
-      },
-      "maxProfilePictureLength": {
-        "deprecated": false,
-        "description": "The maximum allowed length for a user's profile picture",
-        "global": true,
-        "mutable": true,
-        "sensitive": false,
-        "type": "int"
-      },
-      "minPasswordLength": {
-        "deprecated": false,
-        "description": "The minimum allowed length for a user's password. If 0, it means the password can be an empty string \"\". If -1, it means the password can be null",
-        "global": true,
-        "mutable": true,
-        "sensitive": false,
-        "type": "int"
+      "info": {
+        "maxIntroLength": {
+          "deprecated": false,
+          "description": "The maximum allowed length for a user's intro",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int"
+        },
+        "maxNameLength": {
+          "deprecated": false,
+          "description": "The maximum allowed length for a user's name",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int"
+        },
+        "maxPasswordLength": {
+          "deprecated": false,
+          "description": "The maximum allowed length for a user's password",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int"
+        },
+        "maxProfilePictureLength": {
+          "deprecated": false,
+          "description": "The maximum allowed length for a user's profile picture",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int"
+        },
+        "minPasswordLength": {
+          "deprecated": false,
+          "description": "The minimum allowed length for a user's password. If 0, it means the password can be an empty string \"\". If -1, it means the password can be null",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int"
+        },
+        "userDefinedAttributes": {
+          "allowedAttributes": {
+            "deprecated": false,
+            "description": "The list of allowed attributes",
+            "elementType": "im.turms.server.common.infra.property.env.service.business.common.userdefinedattribute.UserDefinedAttributeProperties",
+            "global": true,
+            "mutable": true,
+            "sensitive": false,
+            "type": "java.util.List"
+          },
+          "ignoreUnknownAttributesOnUpsert": {
+            "deprecated": false,
+            "description": "Whether to ignore unknown attributes on upsert. If false, the server will throw if the request specifies an unknown attribute. If true, the server will ignore the unknown attributes, and continue to process the request",
+            "global": true,
+            "mutable": true,
+            "sensitive": false,
+            "type": "boolean"
+          }
+        }
       },
       "respondOfflineIfInvisible": {
         "deprecated": false,
@@ -2195,6 +2378,33 @@
         "mutable": true,
         "sensitive": false,
         "type": "boolean"
+      },
+      "settings": {
+        "allowedSettings": {
+          "deprecated": false,
+          "description": "The list of allowed settings",
+          "elementType": "im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingProperties",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "java.util.List"
+        },
+        "ignoreUnknownSettingsOnDelete": {
+          "deprecated": false,
+          "description": "Whether to ignore unknown settings on delete. If false, the server will throw if the request specifies an unknown setting. If true, the server will ignore the unknown settings, and continue to process the request",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean"
+        },
+        "ignoreUnknownSettingsOnUpsert": {
+          "deprecated": false,
+          "description": "Whether to ignore unknown settings on upsert. If false, the server will throw if the request specifies an unknown setting. If true, the server will ignore the unknown settings, and continue to process the request",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean"
+        }
       }
     }
   },

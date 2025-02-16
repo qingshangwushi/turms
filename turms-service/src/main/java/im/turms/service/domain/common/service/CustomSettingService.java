@@ -17,12 +17,11 @@
 
 package im.turms.service.domain.common.service;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
+import java.util.TreeSet;
 
 import org.eclipse.collections.impl.set.mutable.UnifiedSet;
 
@@ -31,32 +30,43 @@ import im.turms.server.common.access.common.ResponseStatusCode;
 import im.turms.server.common.infra.collection.CollectionUtil;
 import im.turms.server.common.infra.exception.ResponseException;
 import im.turms.server.common.infra.lang.StringUtil;
-import im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingDoubleValueProperties;
-import im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingIntValueProperties;
-import im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingLongValueProperties;
 import im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingProperties;
-import im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingStringValueProperties;
-import im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingValueProperties;
-import im.turms.service.infra.locale.LocaleUtils;
+import im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingsProperties;
 
 /**
  * @author James Chen
  */
-public abstract class CustomSettingService {
+public abstract class CustomSettingService extends CustomValueService {
 
-    protected List<CustomSettingProperties> settingPropertiesList;
-    protected Set<String> immutableSettings;
-    protected Set<String> deletableSettings;
+    private static final String EXCEPTION_MESSAGE_PREFIX_FOUND_DUPLICATE_SETTING =
+            "Found a duplicate setting: ";
+    private static final String EXCEPTION_MESSAGE_PREFIX_UNKNOWN_SETTING = "Unknown setting: ";
+    private static final String EXCEPTION_MESSAGE_PREFIX_UNKNOWN_SETTINGS = "Unknown settings: ";
 
-    protected void updateGlobalProperties(List<CustomSettingProperties> settingPropertiesList) {
+    protected Map<String, CustomSettingProperties> sourceNameToSettingProperties =
+            Collections.emptyMap();
+    protected Set<String> immutableSettings = Collections.emptySet();
+    protected Set<String> deletableSettings = Collections.emptySet();
+    protected Map<String, Boolean> settingToDeletable = Collections.emptyMap();
+    protected boolean ignoreUnknownSettingsOnUpsert;
+    protected boolean ignoreUnknownSettingsOnDelete;
+
+    protected CustomSettingService() {
+        super("The value of the setting \"",
+                "The string value of the setting \"",
+                "The string value length of the setting \"",
+                "The array value of the setting \"");
+    }
+
+    protected void updateGlobalProperties(CustomSettingsProperties properties) {
+        List<CustomSettingProperties> settingPropertiesList = properties.getAllowedSettings();
         int size = settingPropertiesList.size();
         if (0 == size) {
-            this.settingPropertiesList = Collections.emptyList();
-            immutableSettings = Collections.emptySet();
-            deletableSettings = Collections.emptySet();
             return;
         }
-        List<CustomSettingProperties> newSettingsPropertiesList = null;
+        Map<String, CustomSettingProperties> newSourceNameToSettingProperties =
+                CollectionUtil.newMapWithExpectedSize(size);
+        Map<String, Boolean> newSettingToDeletable = CollectionUtil.newMapWithExpectedSize(size);
         Set<String> newImmutableSettings = null;
         Set<String> newDeletableSettings = null;
         for (int i = 0; i < size; i++) {
@@ -64,13 +74,17 @@ public abstract class CustomSettingService {
             String sourceName = settingProperties.getSourceName();
             String storedName = settingProperties.getStoredName();
             if (StringUtil.isEmpty(storedName)) {
-                if (newSettingsPropertiesList == null) {
-                    newSettingsPropertiesList = new ArrayList<>(settingPropertiesList);
-                }
-                newSettingsPropertiesList.set(i,
+                if (newSourceNameToSettingProperties.put(sourceName,
                         settingProperties.toBuilder()
                                 .storedName(sourceName)
-                                .build());
+                                .build()) != null) {
+                    throw new IllegalArgumentException(
+                            EXCEPTION_MESSAGE_PREFIX_FOUND_DUPLICATE_SETTING + sourceName);
+                }
+            } else if (newSourceNameToSettingProperties.put(storedName,
+                    settingProperties) != null) {
+                throw new IllegalArgumentException(
+                        EXCEPTION_MESSAGE_PREFIX_FOUND_DUPLICATE_SETTING + storedName);
             }
             if (settingProperties.isImmutable()) {
                 if (newImmutableSettings == null) {
@@ -78,7 +92,9 @@ public abstract class CustomSettingService {
                 }
                 newImmutableSettings.add(sourceName);
             }
-            if (settingProperties.isDeletable()) {
+            boolean deletable = settingProperties.isDeletable();
+            newSettingToDeletable.put(sourceName, deletable);
+            if (deletable) {
                 if (newDeletableSettings == null) {
                     newDeletableSettings = new UnifiedSet<>(4);
                 }
@@ -86,189 +102,86 @@ public abstract class CustomSettingService {
             }
         }
 
-        this.settingPropertiesList = newSettingsPropertiesList == null
-                ? settingPropertiesList
-                : newSettingsPropertiesList;
+        this.sourceNameToSettingProperties = newSourceNameToSettingProperties;
         this.immutableSettings = newImmutableSettings == null
                 ? Collections.emptySet()
                 : newImmutableSettings;
         this.deletableSettings = newDeletableSettings == null
                 ? Collections.emptySet()
                 : newDeletableSettings;
+        this.settingToDeletable = newSettingToDeletable;
+        this.ignoreUnknownSettingsOnUpsert = properties.isIgnoreUnknownSettingsOnUpsert();
+        this.ignoreUnknownSettingsOnDelete = properties.isIgnoreUnknownSettingsOnDelete();
     }
 
-    /**
-     * @param propertiesList we assume the properties are valid (i.e. both source name and stored
-     *                       name are not blank).
-     */
     protected Map<String, Object> parseSettings(
-            List<CustomSettingProperties> propertiesList,
+            boolean ignoreUnknownSettings,
             Map<String, Value> inputSettings) {
-        if (propertiesList.isEmpty() || inputSettings.isEmpty()) {
+        if (inputSettings.isEmpty()) {
             return Collections.emptyMap();
         }
-        Map<String, Object> outputSettings =
-                CollectionUtil.newMapWithExpectedSize(propertiesList.size());
-        for (CustomSettingProperties properties : propertiesList) {
-            String sourceName = properties.getSourceName();
-            Value value = inputSettings.get(sourceName);
-            if (value == null) {
-                continue;
+        Map<String, CustomSettingProperties> localSourceNameToSettingProperties =
+                sourceNameToSettingProperties;
+        if (localSourceNameToSettingProperties.isEmpty()) {
+            if (ignoreUnknownSettings) {
+                return Collections.emptyMap();
             }
-            Object parsedValue = parseValue(properties.getValue(), sourceName, value);
-            outputSettings.put(properties.getStoredName(), parsedValue);
+            throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
+                    EXCEPTION_MESSAGE_PREFIX_UNKNOWN_SETTINGS
+                            + new TreeSet<>(inputSettings.keySet()));
         }
-        return outputSettings;
-    }
-
-    private Object parseValue(
-            CustomSettingValueProperties valueProperties,
-            String sourceName,
-            Value value) {
-        return switch (valueProperties.getType()) {
-            case INT -> {
-                CustomSettingIntValueProperties properties = valueProperties.getIntValue();
-                int min = properties.getMin();
-                int max = properties.getMax();
-                int val = switch (value.getKindCase()) {
-                    case INT32_VALUE -> value.getInt32Value();
-                    case INT64_VALUE -> (int) value.getInt64Value();
-                    default -> throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
-                            "The value of the setting \""
-                                    + sourceName
-                                    + "\" must be in ["
-                                    + min
-                                    + ", "
-                                    + max
-                                    + "]");
-                };
-                if (val > max || val < min) {
-                    throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
-                            "The value of the setting \""
-                                    + sourceName
-                                    + "\" must be in ["
-                                    + min
-                                    + ", "
-                                    + max
-                                    + "]");
+        int inputSettingCount = inputSettings.size();
+        Map<String, Object> outputSettings =
+                CollectionUtil.newMapWithExpectedSize(inputSettingCount);
+        if (inputSettingCount <= localSourceNameToSettingProperties.size()) {
+            if (ignoreUnknownSettings) {
+                for (Map.Entry<String, Value> entry : inputSettings.entrySet()) {
+                    String sourceName = entry.getKey();
+                    CustomSettingProperties settingProperties =
+                            localSourceNameToSettingProperties.get(sourceName);
+                    if (settingProperties == null) {
+                        continue;
+                    }
+                    outputSettings.put(settingProperties.getStoredName(),
+                            parseValue(settingProperties.getValue(), sourceName, entry.getValue()));
                 }
-                yield val;
+            } else {
+                for (Map.Entry<String, Value> entry : inputSettings.entrySet()) {
+                    String sourceName = entry.getKey();
+                    CustomSettingProperties settingProperties =
+                            localSourceNameToSettingProperties.get(sourceName);
+                    if (settingProperties == null) {
+                        throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
+                                EXCEPTION_MESSAGE_PREFIX_UNKNOWN_SETTING + sourceName);
+                    }
+                    outputSettings.put(settingProperties.getStoredName(),
+                            parseValue(settingProperties.getValue(), sourceName, entry.getValue()));
+                }
             }
-            case LONG -> {
-                CustomSettingLongValueProperties properties = valueProperties.getLongValue();
-                long min = properties.getMin();
-                long max = properties.getMax();
-                long val = switch (value.getKindCase()) {
-                    case INT32_VALUE -> value.getInt32Value();
-                    case INT64_VALUE -> value.getInt64Value();
-                    default -> throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
-                            "The value of the setting \""
-                                    + sourceName
-                                    + "\" must be in ["
-                                    + min
-                                    + ", "
-                                    + max
-                                    + "]");
-                };
-                if (val > max || val < min) {
-                    throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
-                            "The value of the setting \""
-                                    + sourceName
-                                    + "\" must be in ["
-                                    + min
-                                    + ", "
-                                    + max
-                                    + "]");
-                }
-                yield val;
-            }
-            case DOUBLE -> {
-                CustomSettingDoubleValueProperties properties = valueProperties.getDoubleValue();
-                double min = properties.getMin();
-                double max = properties.getMax();
-                double val = switch (value.getKindCase()) {
-                    case FLOAT_VALUE -> value.getFloatValue();
-                    case DOUBLE_VALUE -> value.getDoubleValue();
-                    default -> throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
-                            "The value of the setting \""
-                                    + sourceName
-                                    + "\" must be in ["
-                                    + min
-                                    + ", "
-                                    + max
-                                    + "]");
-                };
-                if (val > max || val < min) {
-                    throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
-                            "The value of the setting \""
-                                    + sourceName
-                                    + "\" must be in ["
-                                    + min
-                                    + ", "
-                                    + max
-                                    + "]");
-                }
-                yield val;
-            }
-            case STRING -> {
-                CustomSettingStringValueProperties properties = valueProperties.getStringValue();
-                int minLength = properties.getMinLength();
-                int maxLength = properties.getMaxLength();
-                List<Pattern> parsedRegexes = properties.getParsedRegexes();
-                String val = switch (value.getKindCase()) {
-                    case INT32_VALUE -> String.valueOf(value.getInt32Value());
-                    case INT64_VALUE -> String.valueOf(value.getInt64Value());
-                    case FLOAT_VALUE -> String.valueOf(value.getFloatValue());
-                    case DOUBLE_VALUE -> String.valueOf(value.getDoubleValue());
-                    case BOOL_VALUE -> String.valueOf(value.getBoolValue());
-                    case STRING_VALUE -> value.getStringValue();
-                    default -> throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
-                            "The value of the setting \""
-                                    + sourceName
-                                    + "\" must be an int32, int64, float, double, bool or string");
-                };
-                int length = val.length();
-                if (length < minLength || length > maxLength) {
-                    throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
-                            "The string value length of the setting \""
-                                    + sourceName
-                                    + "\" must be in ["
-                                    + minLength
-                                    + ", "
-                                    + maxLength
-                                    + "]");
-                }
-                if (!parsedRegexes.isEmpty()) {
-                    for (Pattern regex : parsedRegexes) {
-                        if (!regex.matcher(val)
-                                .matches()) {
-                            throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
-                                    "The string value of the setting \""
-                                            + sourceName
-                                            + "\" must match: "
-                                            + regex.pattern());
-                        }
+        } else {
+            if (!ignoreUnknownSettings) {
+                Set<String> unknownSettingNames = new TreeSet<>();
+                for (String sourceName : inputSettings.keySet()) {
+                    if (!localSourceNameToSettingProperties.containsKey(sourceName)) {
+                        unknownSettingNames.add(sourceName);
                     }
                 }
-                yield val;
+                throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
+                        EXCEPTION_MESSAGE_PREFIX_UNKNOWN_SETTINGS + unknownSettingNames);
             }
-            case BOOL -> switch (value.getKindCase()) {
-                case BOOL_VALUE -> value.getBoolValue();
-                default -> throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
-                        "The value of the setting \""
-                                + sourceName
-                                + "\" must be a bool");
-            };
-            case LANGUAGE -> {
-                String languageId = value.getStringValue();
-                if (!LocaleUtils.isAvailableLanguage(languageId)) {
-                    throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
-                            "The value of the setting \""
-                                    + sourceName
-                                    + "\" must be a valid language ID");
+            for (Map.Entry<String, CustomSettingProperties> sourceNameAndSettingProperties : localSourceNameToSettingProperties
+                    .entrySet()) {
+                String sourceName = sourceNameAndSettingProperties.getKey();
+                Value value = inputSettings.get(sourceName);
+                if (value == null) {
+                    continue;
                 }
-                yield languageId;
+                CustomSettingProperties settingProperties =
+                        sourceNameAndSettingProperties.getValue();
+                outputSettings.put(settingProperties.getStoredName(),
+                        parseValue(settingProperties.getValue(), sourceName, value));
             }
-        };
+        }
+        return outputSettings;
     }
 }

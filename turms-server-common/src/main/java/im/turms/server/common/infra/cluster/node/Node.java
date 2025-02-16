@@ -29,6 +29,8 @@ import org.springframework.context.ApplicationContext;
 import reactor.core.publisher.Mono;
 
 import im.turms.server.common.infra.address.BaseServiceAddressManager;
+import im.turms.server.common.infra.application.ApplicationEnvironmentEventListener;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.cluster.service.ClusterService;
 import im.turms.server.common.infra.cluster.service.codec.CodecService;
 import im.turms.server.common.infra.cluster.service.config.SharedConfigService;
@@ -38,8 +40,6 @@ import im.turms.server.common.infra.cluster.service.discovery.DiscoveryService;
 import im.turms.server.common.infra.cluster.service.idgen.IdService;
 import im.turms.server.common.infra.cluster.service.idgen.ServiceType;
 import im.turms.server.common.infra.cluster.service.rpc.RpcService;
-import im.turms.server.common.infra.context.ApplicationEnvironmentEventListener;
-import im.turms.server.common.infra.context.TurmsApplicationContext;
 import im.turms.server.common.infra.healthcheck.HealthCheckManager;
 import im.turms.server.common.infra.lang.StringUtil;
 import im.turms.server.common.infra.logging.core.logger.Logger;
@@ -65,16 +65,16 @@ public class Node {
     private static final Logger LOGGER = LoggerFactory.getLogger(Node.class);
 
     /**
-     * We use static because: 1. The logger
-     * {@link ApplicationEnvironmentEventListener#configureContextForLogging} needs the node ID to
-     * initialize for logging before the node instance is created. 2. To avoid initializing the node
-     * ID twice, one for logger, another for the node instance because there is a risk that the
-     * logger and the node uses different node IDs.
+     * We use static because:
+     * <p>
+     * 1. The logger {@link ApplicationEnvironmentEventListener#configureContextForLogging} needs
+     * the node ID to initialize for logging before the node instance is created.
+     * <p>
+     * 2. To avoid initializing the node ID twice, one for logger, another for the node instance
+     * because there is a risk that the logger and the node uses different node IDs.
      */
-    @Getter
     private static String nodeId;
-    @Getter
-    private final NodeType nodeType;
+    public static NodeType nodeType;
 
     /**
      * Context
@@ -97,14 +97,15 @@ public class Node {
      */
     public Node(
             ApplicationContext context,
-            NodeType nodeType,
             TurmsApplicationContext turmsContext,
             TurmsPropertiesManager propertiesManager,
             BaseServiceAddressManager serviceAddressManager,
             HealthCheckManager healthCheckManager) {
+        if (nodeType == null) {
+            throw new IllegalStateException("The node type is not set");
+        }
         // Prepare node information
         this.context = context;
-        this.nodeType = nodeType;
         TurmsProperties turmsProperties = propertiesManager.getLocalProperties();
         ClusterProperties clusterProperties = turmsProperties.getCluster();
         SharedConfigProperties sharedConfigProperties = clusterProperties.getSharedConfig();
@@ -183,32 +184,6 @@ public class Node {
         }
     }
 
-    public static synchronized String initNodeId(String id) {
-        if (nodeId != null) {
-            return nodeId;
-        }
-        if (StringUtils.isBlank(id)) {
-            id = RandomStringUtils.randomAlphabetic(8)
-                    .toLowerCase();
-            LOGGER.warn(
-                    "A random node ID ({}) has been used. You should better set a node ID manually in production",
-                    id);
-        } else {
-            if (id.length() > NodeProperties.NODE_ID_MAX_LENGTH) {
-                throw new IllegalArgumentException(
-                        "The length of node ID must be less than or equal to "
-                                + NodeProperties.NODE_ID_MAX_LENGTH);
-            }
-            if (!id.matches("^[a-zA-Z_]\\w*$")) {
-                throw new IllegalArgumentException(
-                        "The node ID must start with a letter or underscore, "
-                                + "and matches zero or more of characters [a-zA-Z0-9_] after the beginning");
-            }
-        }
-        nodeId = id;
-        return nodeId;
-    }
-
     public void start() {
         sharedConfigService.start();
         sharedPropertyService.start();
@@ -246,6 +221,40 @@ public class Node {
         }
         return Mono.zipDelayError(monos, Function.identity())
                 .then();
+    }
+
+    public static synchronized String initNodeId(String id) {
+        if (nodeId != null) {
+            return nodeId;
+        }
+        if (StringUtils.isBlank(id)) {
+            id = RandomStringUtils.randomAlphabetic(8)
+                    .toLowerCase();
+            LOGGER.warn(
+                    "A random node ID ({}) has been used. You should better set a node ID manually in production",
+                    id);
+        } else {
+            if (id.length() > NodeProperties.NODE_ID_MAX_LENGTH) {
+                throw new IllegalArgumentException(
+                        "The length of node ID must be less than or equal to "
+                                + NodeProperties.NODE_ID_MAX_LENGTH);
+            }
+            if (!id.matches("^[a-zA-Z_]\\w*$")) {
+                throw new IllegalArgumentException(
+                        "The node ID must start with a letter or underscore, "
+                                + "and matches zero or more of characters [a-zA-Z0-9_] after the beginning");
+            }
+        }
+        nodeId = id;
+        return nodeId;
+    }
+
+    public String getNodeId() {
+        return nodeId;
+    }
+
+    public NodeType getNodeType() {
+        return nodeType;
     }
 
     // Frequently used methods for external classes

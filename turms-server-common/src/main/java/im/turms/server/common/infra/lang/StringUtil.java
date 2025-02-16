@@ -27,6 +27,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.SequencedCollection;
 import jakarta.annotation.Nullable;
 
 import sun.misc.Unsafe;
@@ -175,8 +176,8 @@ public final class StringUtil {
             return "[]";
         }
         if (itemCount == 1) {
-            Object obj = items instanceof List<?> list
-                    ? list.get(0)
+            Object obj = items instanceof SequencedCollection<?> collection
+                    ? collection.getFirst()
                     : items.iterator()
                             .next();
             if (obj instanceof String str) {
@@ -398,10 +399,11 @@ public final class StringUtil {
 
     /**
      * @implNote 1. The strings must be ASCII and the method won't validate their coder for better
-     *           performance. 2. The number of placeholder "{}" must the same as the number of
-     *           arguments, or its will throw. We don't support mismatch to avoiding growing or
-     *           shrinking the result string, or preprocess the message, which cause a bad
-     *           performance while it can be avoided.
+     *           performance.
+     *           <p>
+     *           2. The number of placeholder "{}" must equal the number of arguments, or its will
+     *           throw. We don't support mismatch to avoid growing or shrinking the result string,
+     *           or preprocess the message, which causes a bad performance while it can be avoided.
      */
     public static String substitute(String message, String... args) {
         byte[] bytes = getBytes(message);
@@ -529,15 +531,15 @@ public final class StringUtil {
         return newLatin1String(bytes);
     }
 
-    public static boolean isBlank(String string) {
+    public static boolean isBlank(@Nullable String string) {
         return string == null || string.isBlank();
     }
 
-    public static boolean isNotBlank(String string) {
+    public static boolean isNotBlank(@Nullable String string) {
         return string != null && !string.isBlank();
     }
 
-    public static boolean isEmpty(String string) {
+    public static boolean isEmpty(@Nullable String string) {
         return string == null || string.isEmpty();
     }
 
@@ -573,6 +575,20 @@ public final class StringUtil {
     public static String newLatin1String(byte[] bytes) {
         try {
             return (String) NEW_STRING.invokeExact(bytes, LATIN1);
+        } catch (Throwable e) {
+            throw new IncompatibleJvmException("Failed to new a string", e);
+        }
+    }
+
+    public static String newUtf16String(byte[] srcBytes, int srcPos, int length) {
+        byte[] bytes = new byte[length];
+        System.arraycopy(srcBytes, srcPos, bytes, 0, length);
+        return newUtf16String(bytes);
+    }
+
+    public static String newUtf16String(byte[] bytes) {
+        try {
+            return (String) NEW_STRING.invokeExact(bytes, UTF16);
         } catch (Throwable e) {
             throw new IncompatibleJvmException("Failed to new a string", e);
         }

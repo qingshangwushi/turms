@@ -38,11 +38,11 @@ public class NotificationMeetingInvitationUpdatedProperties {
     @Description("Whether to notify the requester's other online sessions when they have updated a meeting invitation")
     @GlobalProperty
     @MutableProperty
-    private boolean notifyRequesterOtherOnlineSessions;
+    protected boolean notifyRequesterOtherOnlineSessions = true;
 
     @Description("Whether to notify the meeting participants when the requester has updated a meeting invitation")
     @GlobalProperty
     @MutableProperty
-    private boolean notifyMeetingParticipants;
+    protected boolean notifyMeetingParticipants = true;
 
 }

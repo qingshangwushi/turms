@@ -34,7 +34,7 @@ import im.turms.server.common.infra.lang.StringUtil;
 import im.turms.server.common.infra.logging.core.context.LogThreadContext;
 import im.turms.server.common.infra.logging.core.model.LogLevel;
 import im.turms.server.common.infra.netty.ReferenceCountUtil;
-import im.turms.server.common.infra.time.DateUtil;
+import im.turms.server.common.infra.time.DateTimeUtil;
 import im.turms.server.common.infra.tracing.TracingContext;
 
 /**
@@ -59,7 +59,7 @@ public class TurmsTemplateLayout extends TemplateLayout {
     private static final int NODE_TYPE_AI_SERVING = 'A';
     private static final int NODE_TYPE_GATEWAY = 'G';
     private static final int NODE_TYPE_SERVICE = 'S';
-    private static final int NODE_TYPE_UNKNOWN = 'U';
+    private static final int NODE_TYPE_MOCK_NODE = 'M';
 
     static {
         LogLevel[] levels = ClassUtil.getSharedEnumConstants(LogLevel.class);
@@ -80,18 +80,13 @@ public class TurmsTemplateLayout extends TemplateLayout {
     private final int nodeType;
     private final byte[] nodeId;
 
-    public TurmsTemplateLayout(@Nullable NodeType nodeType, String nodeId) {
-        int type;
-        if (nodeType == null) {
-            type = NODE_TYPE_UNKNOWN;
-        } else {
-            type = switch (nodeType) {
-                case AI_SERVING -> NODE_TYPE_AI_SERVING;
-                case GATEWAY -> NODE_TYPE_GATEWAY;
-                case SERVICE -> NODE_TYPE_SERVICE;
-            };
-        }
-        this.nodeType = type;
+    public TurmsTemplateLayout(NodeType nodeType, String nodeId) {
+        this.nodeType = switch (nodeType) {
+            case AI_SERVING -> NODE_TYPE_AI_SERVING;
+            case GATEWAY -> NODE_TYPE_GATEWAY;
+            case SERVICE -> NODE_TYPE_SERVICE;
+            case MOCK -> NODE_TYPE_MOCK_NODE;
+        };
         this.nodeId = StringUtil.getUtf8Bytes(nodeId);
     }
 
@@ -146,7 +141,7 @@ public class TurmsTemplateLayout extends TemplateLayout {
             @Nullable CharSequence msg,
             @Nullable Object[] args,
             @Nullable Throwable throwable) {
-        byte[] timestamp = DateUtil.toBytes(System.currentTimeMillis());
+        byte[] timestamp = DateTimeUtil.toBytes(System.currentTimeMillis());
 
         String threadName = Thread.currentThread()
                 .getName();
@@ -198,7 +193,7 @@ public class TurmsTemplateLayout extends TemplateLayout {
             @Nullable byte[] className,
             LogLevel level,
             ByteBuf msg) {
-        byte[] timestamp = DateUtil.toBytes(System.currentTimeMillis());
+        byte[] timestamp = DateTimeUtil.toBytes(System.currentTimeMillis());
 
         String threadName = Thread.currentThread()
                 .getName();

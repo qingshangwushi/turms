@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 
 import io.lettuce.core.ScriptOutputType;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,15 +34,16 @@ import im.turms.server.common.access.common.ResponseStatusCode;
 import im.turms.server.common.domain.blocklist.bo.BlockedClient;
 import im.turms.server.common.domain.blocklist.manager.AutoBlockManager;
 import im.turms.server.common.domain.blocklist.manager.BlocklistServiceManager;
+import im.turms.server.common.domain.common.service.BaseService;
 import im.turms.server.common.domain.session.bo.CloseReason;
 import im.turms.server.common.domain.session.bo.SessionCloseStatus;
 import im.turms.server.common.domain.session.rpc.service.RpcSessionService;
+import im.turms.server.common.infra.application.JobShutdownOrder;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.cluster.node.Node;
 import im.turms.server.common.infra.cluster.node.NodeType;
 import im.turms.server.common.infra.collection.ChunkedArrayList;
 import im.turms.server.common.infra.collection.CollectionUtil;
-import im.turms.server.common.infra.context.JobShutdownOrder;
-import im.turms.server.common.infra.context.TurmsApplicationContext;
 import im.turms.server.common.infra.exception.ResponseException;
 import im.turms.server.common.infra.exception.ResponseExceptionPublisherPool;
 import im.turms.server.common.infra.lang.ByteArrayWrapper;
@@ -54,8 +54,10 @@ import im.turms.server.common.infra.property.TurmsPropertiesManager;
 import im.turms.server.common.infra.property.env.common.security.BlocklistProperties;
 import im.turms.server.common.infra.task.CronConst;
 import im.turms.server.common.infra.task.TaskManager;
+import im.turms.server.common.infra.test.VisibleForTesting;
 import im.turms.server.common.infra.thread.NamedThreadFactory;
 import im.turms.server.common.infra.thread.ThreadNameConst;
+import im.turms.server.common.infra.thread.ThreadUtil;
 import im.turms.server.common.storage.redis.TurmsRedisClient;
 import im.turms.server.common.storage.redis.script.RedisScript;
 
@@ -64,10 +66,11 @@ import im.turms.server.common.storage.redis.script.RedisScript;
  */
 @ConditionalOnBean(name = "ipBlocklistRedisClient")
 @Service
-public class BlocklistService {
+public class BlocklistService extends BaseService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BlocklistService.class);
 
+    @VisibleForTesting
     public static int maxLogQueueSize = 100_000;
 
     private final boolean isIpBlocklistEnabled;
@@ -110,26 +113,29 @@ public class BlocklistService {
         isUserIdBlocklistEnabled = userIdBlocklistProperties.isEnabled();
         boolean isGateway = node.getNodeType() == NodeType.GATEWAY;
 
-        Map<String, Object> params = Map.of("MAX_LOG_QUEUE_SIZE", maxLogQueueSize);
+        Map<String, Object> params = Map.of("MAX_LOG_QUEUE_SIZE",
+                maxLogQueueSize,
+                "LOG_ENTRY_ELEMENT_COUNT",
+                BlocklistServiceManager.LOG_ENTRY_ELEMENT_COUNT);
 
-        RedisScript blockClientsScript =
+        RedisScript<List<Object>> blockClientsScript =
                 RedisScript.get(new ClassPathResource("redis/blocklist/block_clients.lua"),
                         ScriptOutputType.MULTI,
                         params);
-        RedisScript unblockClientsScript =
+        RedisScript<List<Object>> unblockClientsScript =
                 RedisScript.get(new ClassPathResource("redis/blocklist/unblock_clients.lua"),
                         ScriptOutputType.MULTI,
                         params);
-        RedisScript getBlockedClientsScript =
+        RedisScript<List<Object>> getBlockedClientsScript =
                 RedisScript.get(new ClassPathResource("redis/blocklist/get_blocked_clients.lua"),
                         ScriptOutputType.MULTI);
-        RedisScript evictAllBlockedClients = RedisScript.get(
+        RedisScript<Boolean> evictAllBlockedClients = RedisScript.get(
                 new ClassPathResource("redis/blocklist/evict_all_blocked_clients.lua"),
                 ScriptOutputType.BOOLEAN);
-        RedisScript evictExpiredBlockedClients = RedisScript.get(
+        RedisScript<Boolean> evictExpiredBlockedClients = RedisScript.get(
                 new ClassPathResource("redis/blocklist/evict_expired_blocked_clients.lua"),
                 ScriptOutputType.BOOLEAN);
-        RedisScript getBlocklistLogsScript =
+        RedisScript<List<Object>> getBlocklistLogsScript =
                 RedisScript.get(new ClassPathResource("redis/blocklist/get_blocklist_logs.lua"),
                         ScriptOutputType.MULTI,
                         params);
@@ -255,55 +261,49 @@ public class BlocklistService {
     }
 
     private Mono<Void> destroy(long timeoutMillis) {
-        threadPoolExecutor.shutdown();
-        try {
-            threadPoolExecutor.awaitTermination(timeoutMillis, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            // ignore
-        }
-        return Mono.empty();
+        return ThreadUtil.shutdown(threadPoolExecutor, timeoutMillis);
     }
 
     // Block
 
-    public void blockIp(ByteArrayWrapper address, long blockDurationSeconds) {
+    public void blockIp(ByteArrayWrapper address, long blockDurationMillis) {
         if (!isIpBlocklistEnabled) {
             throw ResponseException.get(ResponseStatusCode.IP_BLOCKLIST_IS_DISABLED);
         }
-        ipBlocklistServiceManager.blockClients(Set.of(address), blockDurationSeconds)
+        ipBlocklistServiceManager.blockClients(Set.of(address), blockDurationMillis)
                 .subscribe(null, t -> LOGGER.error("Caught an error while blocking clients", t));
     }
 
-    public Mono<Void> blockIpStrings(Set<String> ips, long blockDurationSeconds) {
+    public Mono<Void> blockIpStrings(Set<String> ips, long blockDurationMillis) {
         if (!isIpBlocklistEnabled) {
             return ResponseExceptionPublisherPool.ipBlocklistIsDisabled();
         }
-        return ipBlocklistServiceManager.blockClients(ipsToBytes(ips), blockDurationSeconds);
+        return ipBlocklistServiceManager.blockClients(ipsToBytes(ips), blockDurationMillis);
     }
 
-    public Mono<Void> blockIps(Set<ByteArrayWrapper> ips, long blockDurationSeconds) {
+    public Mono<Void> blockIps(Set<ByteArrayWrapper> ips, long blockDurationMillis) {
         if (!isIpBlocklistEnabled) {
             return ResponseExceptionPublisherPool.ipBlocklistIsDisabled();
         }
-        return ipBlocklistServiceManager.blockClients(ips, blockDurationSeconds);
+        return ipBlocklistServiceManager.blockClients(ips, blockDurationMillis);
     }
 
-    public void blockUserId(Long userId, long blockDurationSeconds) {
+    public void blockUserId(Long userId, long blockDurationMillis) {
         if (!isUserIdBlocklistEnabled) {
             throw ResponseException.get(ResponseStatusCode.USER_ID_BLOCKLIST_IS_DISABLED);
         }
-        userIdBlocklistServiceManager.blockClients(Set.of(userId), blockDurationSeconds)
+        userIdBlocklistServiceManager.blockClients(Set.of(userId), blockDurationMillis)
                 .subscribe(null,
                         t -> LOGGER.error(
                                 "Caught an error while deleting expired group invitations",
                                 t));
     }
 
-    public Mono<Void> blockUserIds(Set<Long> userIds, long blockDurationSeconds) {
+    public Mono<Void> blockUserIds(Set<Long> userIds, long blockDurationMillis) {
         if (!isUserIdBlocklistEnabled) {
             return ResponseExceptionPublisherPool.userIdBlocklistIsDisabled();
         }
-        return userIdBlocklistServiceManager.blockClients(userIds, blockDurationSeconds);
+        return userIdBlocklistServiceManager.blockClients(userIds, blockDurationMillis);
     }
 
     public void tryBlockIpForCorruptedFrame(ByteArrayWrapper ip) {

@@ -34,4 +34,52 @@ public interface QueryJoinedGroupIdsRequestOrBuilder extends
      * @return The lastUpdatedDate.
      */
     long getLastUpdatedDate();
+
+    /**
+     * <code>repeated int64 user_ids_for_common_groups = 2;</code>
+     *
+     * @return A list containing the userIdsForCommonGroups.
+     */
+    java.util.List<java.lang.Long> getUserIdsForCommonGroupsList();
+
+    /**
+     * <code>repeated int64 user_ids_for_common_groups = 2;</code>
+     *
+     * @return The count of userIdsForCommonGroups.
+     */
+    int getUserIdsForCommonGroupsCount();
+
+    /**
+     * <code>repeated int64 user_ids_for_common_groups = 2;</code>
+     *
+     * @param index The index of the element to return.
+     * @return The userIdsForCommonGroups at the given index.
+     */
+    long getUserIdsForCommonGroups(int index);
+
+    /**
+     * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+     */
+    java.util.List<im.turms.server.common.access.client.dto.model.common.Value> getCustomAttributesList();
+
+    /**
+     * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+     */
+    im.turms.server.common.access.client.dto.model.common.Value getCustomAttributes(int index);
+
+    /**
+     * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+     */
+    int getCustomAttributesCount();
+
+    /**
+     * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+     */
+    java.util.List<? extends im.turms.server.common.access.client.dto.model.common.ValueOrBuilder> getCustomAttributesOrBuilderList();
+
+    /**
+     * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+     */
+    im.turms.server.common.access.client.dto.model.common.ValueOrBuilder getCustomAttributesOrBuilder(
+            int index);
 }

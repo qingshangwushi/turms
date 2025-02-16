@@ -31,7 +31,8 @@ import im.turms.server.common.infra.cluster.service.config.entity.discovery.Lead
 import im.turms.server.common.infra.cluster.service.config.entity.discovery.Member;
 import im.turms.server.common.infra.cluster.service.config.entity.property.SharedClusterProperties;
 import im.turms.server.common.infra.collection.CollectionUtil;
-import im.turms.server.common.infra.property.env.service.env.database.TurmsMongoProperties;
+import im.turms.server.common.infra.collection.CollectorUtil;
+import im.turms.server.common.infra.property.env.common.mongo.MongoProperties;
 import im.turms.server.common.infra.time.DurationConst;
 import im.turms.server.common.storage.mongo.TurmsMongoClient;
 import im.turms.server.common.storage.mongo.exception.DuplicateKeyException;
@@ -49,7 +50,7 @@ public class SharedConfigService implements ClusterService {
     // Service registry and config client
     private final TurmsMongoClient mongoClient;
 
-    public SharedConfigService(TurmsMongoProperties properties) {
+    public SharedConfigService(MongoProperties properties) {
         try {
             mongoClient = TurmsMongoClient.of(properties, "shared-config")
                     .block(DurationConst.ONE_MINUTE);
@@ -58,17 +59,19 @@ public class SharedConfigService implements ClusterService {
         }
         List<Class<?>> classes = List.of(SharedClusterProperties.class, Leader.class, Member.class);
         mongoClient.registerEntitiesByClasses(classes);
-        for (Class<?> entityClass : classes) {
-            try {
-                mongoClient.createCollectionIfNotExists(entityClass)
-                        .block(DurationConst.ONE_MINUTE);
-            } catch (Exception e) {
-                throw new RuntimeException(
-                        "Failed to create the collection for the class: "
-                                + entityClass.getName(),
-                        e);
-            }
-        }
+        mongoClient.listCollectionNames()
+                .collect(CollectorUtil.toSet(3))
+                .flatMap(existingCollectionNames -> Flux
+                        .concat(CollectionUtil.transformAsList(classes,
+                                entityClass -> mongoClient
+                                        .createCollectionIfNotExists(entityClass,
+                                                existingCollectionNames)
+                                        .onErrorMap(t -> new RuntimeException(
+                                                "Failed to create the collection for the class: "
+                                                        + entityClass.getName(),
+                                                t))))
+                        .then())
+                .block(DurationConst.ONE_MINUTE);
         try {
             mongoClient.ensureIndexesAndShards(classes)
                     .block(DurationConst.ONE_MINUTE);

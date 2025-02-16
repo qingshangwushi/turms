@@ -39,8 +39,8 @@ public enum StorageResourceType implements com.google.protobuf.ProtocolMessageEn
         com.google.protobuf.RuntimeVersion.validateProtobufGencodeVersion(
                 com.google.protobuf.RuntimeVersion.RuntimeDomain.PUBLIC,
                 /* major= */ 4,
-                /* minor= */ 27,
-                /* patch= */ 0,
+                /* minor= */ 29,
+                /* patch= */ 1,
                 /* suffix= */ "",
                 StorageResourceType.class.getName());
     }
@@ -112,7 +112,7 @@ public enum StorageResourceType implements com.google.protobuf.ProtocolMessageEn
         return im.turms.server.common.access.client.dto.constant.StorageResourceTypeOuterClass
                 .getDescriptor()
                 .getEnumTypes()
-                .get(0);
+                .getFirst();
     }
 
     private static final StorageResourceType[] VALUES = values();

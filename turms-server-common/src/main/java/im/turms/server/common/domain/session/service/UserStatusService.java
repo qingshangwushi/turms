@@ -42,6 +42,7 @@ import reactor.core.publisher.Mono;
 
 import im.turms.server.common.access.client.dto.constant.DeviceType;
 import im.turms.server.common.access.client.dto.constant.UserStatus;
+import im.turms.server.common.domain.common.service.BaseService;
 import im.turms.server.common.domain.common.util.DeviceTypeUtil;
 import im.turms.server.common.domain.session.bo.UserDeviceSessionInfo;
 import im.turms.server.common.domain.session.bo.UserSessionsStatus;
@@ -64,6 +65,7 @@ import im.turms.server.common.infra.property.env.gateway.session.SessionProperti
 import im.turms.server.common.infra.reactor.HashedWheelScheduler;
 import im.turms.server.common.infra.reactor.PublisherPool;
 import im.turms.server.common.infra.test.VisibleForTesting;
+import im.turms.server.common.infra.time.DateTimeUtil;
 import im.turms.server.common.infra.validation.ValidDeviceType;
 import im.turms.server.common.infra.validation.Validator;
 import im.turms.server.common.storage.redis.TurmsRedisClientManager;
@@ -74,9 +76,9 @@ import im.turms.server.common.storage.redis.script.RedisScript;
  */
 @ConditionalOnBean(name = "sessionRedisClientManager")
 @Service
-public class UserStatusService {
+public class UserStatusService extends BaseService {
 
-    private static final long NODE_STATUS_TTL_MILLIS = 15_000L;
+    private static final long NODE_STATUS_TTL_NANOS = 15 * DateTimeUtil.NANOS_PER_SECOND;
 
     private final RedisScript<ByteBuf> addOnlineUserScript;
     private final RedisScript<List<Object>> getUsersDeviceDetailsScript =
@@ -289,7 +291,7 @@ public class UserStatusService {
                     int size = userIdGenerator.estimatedSize();
                     Set<Long> nonexistentUserIds = CollectionUtil.newSetWithExpectedSize(size);
                     for (List<ByteBuf> buffers : objects) {
-                        if (buffers.size() == 1 && buffers.get(0) == null) {
+                        if (buffers.size() == 1 && buffers.getFirst() == null) {
                             return Collections.emptySet();
                         }
                         for (ByteBuf buffer : buffers) {
@@ -482,18 +484,17 @@ public class UserStatusService {
         Mono<NodeStatus> nodeStatusMono = nodeIdToStatusCache.computeIfAbsent(nodeId,
                 id -> node.getDiscoveryService()
                         .checkIfMemberExists(nodeId)
-                        .map(isActive -> new NodeStatus(System.currentTimeMillis(), isActive)));
+                        .map(isActive -> new NodeStatus(System.nanoTime(), isActive)));
         return nodeStatusMono
                 // To not cache error
                 .doOnError(t -> nodeIdToStatusCache.remove(nodeId, nodeStatusMono))
                 .flatMap(status -> {
-                    if ((System.currentTimeMillis()
-                            - status.recordTimestampMillis) < NODE_STATUS_TTL_MILLIS) {
+                    if ((System.nanoTime() - status.recordTimestampNanos) < NODE_STATUS_TTL_NANOS) {
                         return Mono.just(status);
                     }
                     Mono<NodeStatus> newStatus = Mono.defer(() -> node.getDiscoveryService()
                             .checkIfMemberExists(nodeId)
-                            .map(isActive -> new NodeStatus(System.currentTimeMillis(), isActive)));
+                            .map(isActive -> new NodeStatus(System.nanoTime(), isActive)));
                     boolean replaced =
                             nodeIdToStatusCache.replace(nodeId, nodeStatusMono, newStatus);
                     return replaced
@@ -509,7 +510,7 @@ public class UserStatusService {
      */
     public Mono<Map<Long, Map<String, String>>> fetchDeviceDetails(
             @NotEmpty Set<Long> userIds,
-            @NotEmpty List<String> fields) {
+            @NotEmpty Collection<String> fields) {
         try {
             Validator.notEmpty(userIds, "userIds");
             Validator.notEmpty(fields, "fields");
@@ -723,7 +724,7 @@ public class UserStatusService {
     }
 
     private record NodeStatus(
-            long recordTimestampMillis,
+            long recordTimestampNanos,
             boolean isActive
     ) {
     }

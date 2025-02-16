@@ -19,7 +19,6 @@ package unit.im.turms.server.common.infra.plugin;
 
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.Collections;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -29,8 +28,9 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import im.turms.server.common.access.client.dto.notification.TurmsNotification;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
+import im.turms.server.common.infra.cluster.node.Node;
 import im.turms.server.common.infra.cluster.node.NodeType;
-import im.turms.server.common.infra.context.TurmsApplicationContext;
 import im.turms.server.common.infra.logging.core.logger.AsyncLogger;
 import im.turms.server.common.infra.logging.core.logger.Logger;
 import im.turms.server.common.infra.logging.core.logger.LoggerFactory;
@@ -90,7 +90,7 @@ class JsPluginManagerTests {
         StepVerifier.create(actual)
                 .expectNextMatches(notifications -> {
                     assertThat(notifications).hasSize(1);
-                    TurmsNotification notification = notifications.get(0);
+                    TurmsNotification notification = notifications.getFirst();
                     assertThat(notifications).hasSize(1);
                     assertThat(notification.getCode()).isEqualTo(123);
                     assertThat(notification.getReason()).isEqualTo("reason");
@@ -139,9 +139,14 @@ class JsPluginManagerTests {
     }
 
     private MyExtensionPointForJs createExtensionPoint() {
+        Node node = mock(Node.class);
+        when(node.getNodeType()).thenReturn(NodeType.MOCK);
+
         ApplicationContext context = mock(ApplicationContext.class);
+
         TurmsApplicationContext applicationContext = mock(TurmsApplicationContext.class);
         when(applicationContext.getHome()).thenReturn(Path.of("./src/test/resources"));
+
         TurmsPropertiesManager propertiesManager = mock(TurmsPropertiesManager.class);
         when(propertiesManager.getLocalProperties()).thenReturn(new TurmsProperties().toBuilder()
                 .plugin(new PluginProperties().toBuilder()
@@ -149,15 +154,11 @@ class JsPluginManagerTests {
                         .dir(".")
                         .build())
                 .build());
-        PluginManager manager = new PluginManager(
-                NodeType.GATEWAY,
-                context,
-                applicationContext,
-                propertiesManager,
-                Collections.emptySet());
+        PluginManager manager =
+                new PluginManager(node, context, applicationContext, propertiesManager);
         List<MyExtensionPointForJs> list = manager.getExtensionPoints(MyExtensionPointForJs.class);
         assertThat(list).hasSize(1);
-        return list.get(0);
+        return list.getFirst();
     }
 
 }

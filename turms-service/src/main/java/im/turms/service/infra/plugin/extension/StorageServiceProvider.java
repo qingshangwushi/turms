@@ -26,22 +26,24 @@ import jakarta.validation.constraints.NotNull;
 import reactor.core.publisher.Mono;
 
 import im.turms.server.common.access.admin.web.MediaType;
+import im.turms.server.common.access.client.dto.model.common.Value;
 import im.turms.server.common.access.common.ResponseStatusCode;
 import im.turms.server.common.infra.exception.NotImplementedException;
 import im.turms.server.common.infra.plugin.ExtensionPoint;
+import im.turms.server.common.infra.plugin.Singleton;
 import im.turms.server.common.infra.time.DateRange;
 import im.turms.service.domain.storage.bo.StorageResourceInfo;
 
 /**
  * @author James Chen
  */
-public interface StorageServiceProvider extends ExtensionPoint {
+public interface StorageServiceProvider extends ExtensionPoint, Singleton {
 
     // User profile picture
 
     default Mono<Void> deleteUserProfilePicture(
             @NotNull Long requesterId,
-            @NotNull Map<String, String> extra) {
+            @NotNull List<Value> customAttributes) {
         return Mono.error(new NotImplementedException());
     }
 
@@ -57,7 +59,7 @@ public interface StorageServiceProvider extends ExtensionPoint {
             @NotNull Long requesterId,
             @Nullable String resourceName,
             @Nullable MediaType resourceMediaType,
-            @NotNull Map<String, String> extra) {
+            @NotNull List<Value> customAttributes) {
         return Mono.error(new NotImplementedException());
     }
 
@@ -72,7 +74,7 @@ public interface StorageServiceProvider extends ExtensionPoint {
     default Mono<Map<String, String>> queryUserProfilePictureDownloadInfo(
             @NotNull Long requesterId,
             @NotNull Long userId,
-            @NotNull Map<String, String> extra) {
+            @NotNull List<Value> customAttributes) {
         return Mono.error(new NotImplementedException());
     }
 
@@ -81,7 +83,7 @@ public interface StorageServiceProvider extends ExtensionPoint {
     default Mono<Void> deleteGroupProfilePicture(
             @NotNull Long requesterId,
             @NotNull Long groupId,
-            @NotNull Map<String, String> extra) {
+            @NotNull List<Value> customAttributes) {
         return Mono.error(new NotImplementedException());
     }
 
@@ -98,7 +100,7 @@ public interface StorageServiceProvider extends ExtensionPoint {
             @NotNull Long groupId,
             @Nullable String resourceName,
             @Nullable MediaType resourceMediaType,
-            @NotNull Map<String, String> extra) {
+            @NotNull List<Value> customAttributes) {
         return Mono.error(new NotImplementedException());
     }
 
@@ -113,7 +115,7 @@ public interface StorageServiceProvider extends ExtensionPoint {
     default Mono<Map<String, String>> queryGroupProfilePictureDownloadInfo(
             @NotNull Long requesterId,
             @NotNull Long groupId,
-            @NotNull Map<String, String> extra) {
+            @NotNull List<Value> customAttributes) {
         return Mono.error(new NotImplementedException());
     }
 
@@ -123,7 +125,7 @@ public interface StorageServiceProvider extends ExtensionPoint {
             @NotNull Long requesterId,
             @Nullable Long messageAttachmentIdNum,
             @Nullable String messageAttachmentIdStr,
-            @NotNull Map<String, String> extra) {
+            @NotNull List<Value> customAttributes) {
         return Mono.error(new NotImplementedException());
     }
 
@@ -171,7 +173,7 @@ public interface StorageServiceProvider extends ExtensionPoint {
             @NotNull Long requesterId,
             @Nullable String resourceName,
             @Nullable MediaType resourceMediaType,
-            @NotNull Map<String, String> extra) {
+            @NotNull List<Value> customAttributes) {
         return Mono.error(new NotImplementedException());
     }
 
@@ -188,7 +190,7 @@ public interface StorageServiceProvider extends ExtensionPoint {
             @NotNull Long userId,
             @Nullable String resourceName,
             @Nullable MediaType resourceMediaType,
-            @NotNull Map<String, String> extra) {
+            @NotNull List<Value> customAttributes) {
         return Mono.error(new NotImplementedException());
     }
 
@@ -205,7 +207,7 @@ public interface StorageServiceProvider extends ExtensionPoint {
             @NotNull Long groupId,
             @Nullable String resourceName,
             @Nullable MediaType resourceMediaType,
-            @NotNull Map<String, String> extra) {
+            @NotNull List<Value> customAttributes) {
         return Mono.error(new NotImplementedException());
     }
 
@@ -221,7 +223,7 @@ public interface StorageServiceProvider extends ExtensionPoint {
             @NotNull Long requesterId,
             @Nullable Long messageAttachmentIdNum,
             @Nullable String messageAttachmentIdStr,
-            @NotNull Map<String, String> extra) {
+            @NotNull List<Value> customAttributes) {
         return Mono.error(new NotImplementedException());
     }
 

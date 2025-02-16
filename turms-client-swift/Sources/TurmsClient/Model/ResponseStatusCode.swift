@@ -10,6 +10,7 @@ public enum ResponseStatusCode: Int {
     // Client - Common
     case connectTimeout = 1
     case dataNotFound = 10
+    case networkError = 80
     case httpError = 90
     case httpNotSuccessfulResponse
 
@@ -225,6 +226,10 @@ public enum ResponseStatusCode: Int {
     case notGroupMemberToSendTypingStatus
     case notFriendToSendTypingStatus
 
+    // Conversation - Setting
+    case notRelatedUserToUpdatePrivateConversationSetting = 4200
+    case notGroupMemberToUpdateGroupConversationSetting
+
     // Message
 
     // Message - Send
@@ -273,6 +278,28 @@ public enum ResponseStatusCode: Int {
     // Storage - Message attachment info
     case notFriendToQueryMessageAttachmentInfoInPrivateConversation = 6130
     case notGroupMemberToQueryMessageAttachmentInfoInGroupConversation
+
+    // Search
+    case searchingUserIsDisabled = 7100
+    case searchingGroupIsDisabled = 7200
+
+    // Conference
+    case conferenceNotImplemented = 8000
+
+    // Conference - Meeting
+    case createMeetingExceedingMaxActiveMeetingCount = 8100
+    case notCreatorToCancelMeeting
+    case cancelingMeetingIsDisabled
+    case cancelNonexistentMeeting
+    case notCreatorToUpdateMeetingPassword
+    case updateInfoOfNonexistentMeeting
+
+    case acceptMeetingInvitationWithWrongPassword = 8200
+    case acceptMeetingInvitationOfCanceledMeeting
+    case acceptMeetingInvitationOfEndedMeeting
+    case acceptMeetingInvitationOfExpiredMeeting
+    case acceptMeetingInvitationOfPendingMeeting
+    case acceptNonexistentMeetingInvitation
 }
 
 public extension ResponseStatusCode {

@@ -31,17 +31,17 @@ import java.util.stream.Stream;
 import jakarta.annotation.Nullable;
 import jakarta.annotation.PreDestroy;
 
-import ai.djl.modality.cv.Image;
 import ai.djl.modality.cv.output.DetectedObjects;
-import ai.djl.opencv.OpenCVImageUtil;
+import ai.djl.opencv.ExtendedOpenCVImage;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.springframework.stereotype.Service;
 
 import im.turms.ai.infra.image.ImageUtil;
 import im.turms.ai.infra.ocr.OcrManager;
+import im.turms.server.common.domain.common.service.BaseService;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.collection.CollectionUtil;
-import im.turms.server.common.infra.context.TurmsApplicationContext;
 import im.turms.server.common.infra.io.InputOutputException;
 import im.turms.server.common.infra.logging.core.logger.Logger;
 import im.turms.server.common.infra.logging.core.logger.LoggerFactory;
@@ -53,7 +53,7 @@ import im.turms.server.common.infra.property.env.aiserving.OcrProperties;
  * @author James Chen
  */
 @Service
-public class OcrService {
+public class OcrService extends BaseService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OcrService.class);
 
@@ -80,8 +80,9 @@ public class OcrService {
                 modelDir.resolve("recognition.tar"));
 
         // Warm up
-        Image image = OpenCVImageUtil.create(Mat.zeros(1, 1, CvType.CV_8U));
-        ocrManager.ocr(image);
+        try (ExtendedOpenCVImage image = new ExtendedOpenCVImage(Mat.zeros(1, 1, CvType.CV_8U))) {
+            ocrManager.ocr(image);
+        }
     }
 
     private void registerCustomFonts(Path fontDir) {
@@ -157,13 +158,11 @@ public class OcrService {
                 .toAbsolutePath()
                 .normalize()
                 .toString();
-        Image image = OpenCVImageUtil.create(imagePath);
-        DetectedObjects detectedObjects = ocrManager.ocr(image);
-
-        Mat mat = (Mat) image.getWrappedImage();
-        mat = ImageUtil.drawBoundingBoxes(mat, detectedObjects, font);
-
-        return ImageUtil.writeTempImageFile(mat);
+        try (ExtendedOpenCVImage image = new ExtendedOpenCVImage(imagePath)) {
+            DetectedObjects detectedObjects = ocrManager.ocr(image);
+            Mat mat = ImageUtil.drawBoundingBoxes(image.getWrappedImage(), detectedObjects, font);
+            return ImageUtil.writeTempImageFile(mat);
+        }
     }
 
 }

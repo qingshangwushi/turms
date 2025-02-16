@@ -50,32 +50,62 @@ import im.turms.server.common.infra.lang.StrJoiner;
 public final class CollectionUtil {
 
     private static final Map.Entry[] EMPTY_ENTRY_ARRAY = new Map.Entry[0];
+
     private static final Class<?> IMMUTABLE_COLLECTION_CLASS;
     private static final Class<?> IMMUTABLE_SET_CLASS;
     private static final Class<?> IMMUTABLE_MAP_CLASS;
+
+    private static final Class<?> IMMUTABLE_EMPTY_LIST_CLASS;
+    private static final Class<?> IMMUTABLE_EMPTY_SET_CLASS;
+    private static final Class<?> IMMUTABLE_EMPTY_MAP_CLASS;
 
     static {
         IMMUTABLE_SET_CLASS = Set.of()
                 .getClass()
                 .getSuperclass();
-        if (!IMMUTABLE_SET_CLASS.getName()
-                .equals("java.util.ImmutableCollections$AbstractImmutableSet")) {
+        String immutableSetClassName = IMMUTABLE_SET_CLASS.getName();
+        if (!immutableSetClassName.equals("java.util.ImmutableCollections$AbstractImmutableSet")) {
             throw new IncompatibleJvmException(
-                    "Could not find the class: java.util.ImmutableCollections$AbstractImmutableSet");
+                    "Could not find the class: java.util.ImmutableCollections$AbstractImmutableSet. Found: "
+                            + immutableSetClassName);
         }
         IMMUTABLE_COLLECTION_CLASS = IMMUTABLE_SET_CLASS.getSuperclass();
-        if (!IMMUTABLE_COLLECTION_CLASS.getName()
+        String immutableCollectionClassName = IMMUTABLE_COLLECTION_CLASS.getName();
+        if (!immutableCollectionClassName
                 .equals("java.util.ImmutableCollections$AbstractImmutableCollection")) {
             throw new IncompatibleJvmException(
-                    "Could not find the class: java.util.ImmutableCollections$AbstractImmutableCollection");
+                    "Could not find the class: java.util.ImmutableCollections$AbstractImmutableCollection. Found: "
+                            + immutableCollectionClassName);
         }
         IMMUTABLE_MAP_CLASS = Map.of()
                 .getClass()
                 .getSuperclass();
-        if (!IMMUTABLE_MAP_CLASS.getName()
-                .equals("java.util.ImmutableCollections$AbstractImmutableMap")) {
+        String immutableMapClassName = IMMUTABLE_MAP_CLASS.getName();
+        if (!immutableMapClassName.equals("java.util.ImmutableCollections$AbstractImmutableMap")) {
             throw new IncompatibleJvmException(
-                    "Could not find the class: java.util.ImmutableCollections$AbstractImmutableMap");
+                    "Could not find the class: java.util.ImmutableCollections$AbstractImmutableMap. Found: "
+                            + immutableMapClassName);
+        }
+        IMMUTABLE_EMPTY_LIST_CLASS = Collections.EMPTY_LIST.getClass();
+        String immutableEmptyListClassName = IMMUTABLE_EMPTY_LIST_CLASS.getName();
+        if (!immutableEmptyListClassName.equals("java.util.Collections$EmptyList")) {
+            throw new IncompatibleJvmException(
+                    "Could not find the class: java.util.Collections$EmptyList. Found: "
+                            + immutableEmptyListClassName);
+        }
+        IMMUTABLE_EMPTY_SET_CLASS = Collections.EMPTY_SET.getClass();
+        String immutableEmptySetClassName = IMMUTABLE_EMPTY_SET_CLASS.getName();
+        if (!immutableEmptySetClassName.equals("java.util.Collections$EmptySet")) {
+            throw new IncompatibleJvmException(
+                    "Could not find the class: java.util.Collections$EmptySet. Found: "
+                            + immutableEmptySetClassName);
+        }
+        IMMUTABLE_EMPTY_MAP_CLASS = Collections.EMPTY_MAP.getClass();
+        String immutableEmptyMapClassName = IMMUTABLE_EMPTY_MAP_CLASS.getName();
+        if (!immutableEmptyMapClassName.equals("java.util.Collections$EmptyMap")) {
+            throw new IncompatibleJvmException(
+                    "Could not find the class: java.util.Collections$EmptyMap. Found: "
+                            + immutableEmptyMapClassName);
         }
     }
 
@@ -146,6 +176,30 @@ public final class CollectionUtil {
 
     public static <T> Set<T> newSetWithExpectedSize(int expectedSize) {
         return UnifiedSet.newSet(expectedSize);
+    }
+
+    public static <T> Set<T> newSetIntersection(Collection<T> c1, Collection<T> c2) {
+        int count;
+        Collection<T> smaller;
+        Collection<T> larger;
+        int c1Size = c1.size();
+        int c2Size = c2.size();
+        if (c1Size < c2Size) {
+            count = c1Size;
+            smaller = c1;
+            larger = c2;
+        } else {
+            count = c2Size;
+            smaller = c2;
+            larger = c1;
+        }
+        Set<T> set = newSetWithExpectedSize(count);
+        for (T value : smaller) {
+            if (larger.contains(value)) {
+                set.add(value);
+            }
+        }
+        return set;
     }
 
     public static <T> SequencedSet<T> newSequencedSet(Collection<T> values) {
@@ -230,17 +284,31 @@ public final class CollectionUtil {
         return map != null && !map.isEmpty();
     }
 
+    /**
+     * Note that the method only checks the immutable classes used by Turms.
+     */
     public static boolean isImmutable(Iterable<?> iterable) {
         return IMMUTABLE_COLLECTION_CLASS.isInstance(iterable)
+                || IMMUTABLE_EMPTY_LIST_CLASS.isInstance(iterable)
+                || IMMUTABLE_EMPTY_SET_CLASS.isInstance(iterable)
                 || iterable instanceof ImmutableCollection;
     }
 
+    /**
+     * Note that the method only checks the immutable classes used by Turms.
+     */
     public static boolean isImmutable(Map<?, ?> map) {
-        return IMMUTABLE_MAP_CLASS.isInstance(map) || map instanceof ImmutableMap<?, ?>;
+        return IMMUTABLE_MAP_CLASS.isInstance(map)
+                || IMMUTABLE_EMPTY_MAP_CLASS.isInstance(map)
+                || map instanceof ImmutableMap<?, ?>;
     }
 
+    /**
+     * Note that the method only checks the immutable classes used by Turms.
+     */
     public static boolean isImmutableSet(Iterable<?> iterable) {
-        return IMMUTABLE_SET_CLASS.isInstance(iterable);
+        return IMMUTABLE_SET_CLASS.isInstance(iterable)
+                || IMMUTABLE_EMPTY_SET_CLASS.isInstance(iterable);
     }
     // endregion
 
@@ -389,6 +457,22 @@ public final class CollectionUtil {
 
     public static <T> List<T> toListSupportRandomAccess(Collection<T> collection) {
         if (collection instanceof List<T> list && collection instanceof RandomAccess) {
+            return list;
+        }
+        return new ArrayList<>(collection);
+    }
+
+    public static <T> List<T> toMutableList(List<T> list) {
+        return isImmutable(list)
+                ? new ArrayList<>(list)
+                : list;
+    }
+
+    public static <T> List<T> toMutableList(Collection<T> collection) {
+        if (isImmutable(collection)) {
+            return new ArrayList<>(collection);
+        }
+        if (collection instanceof List<T> list) {
             return list;
         }
         return new ArrayList<>(collection);
@@ -621,7 +705,12 @@ public final class CollectionUtil {
 
     // region intersection/union
     public static <T> Set<T> intersection(Set<T> c1, Collection<T> c2) {
-        Set<T> result = newSetWithExpectedSize(Math.min(c1.size(), c2.size()));
+        int size1 = c1.size();
+        int size2 = c2.size();
+        if (size1 == 0 || size2 == 0) {
+            return Collections.emptySet();
+        }
+        Set<T> result = newSetWithExpectedSize(Math.min(size1, size2));
         for (T value : c2) {
             if (c1.contains(value)) {
                 result.add(value);
@@ -630,8 +719,15 @@ public final class CollectionUtil {
         return result;
     }
 
-    public static <T> List<T> union(List<? extends T> list1, List<? extends T> list2) {
-        ArrayList<T> result = new ArrayList<>(list1.size() + list2.size());
+    public static <T> List<T> union(List<T> list1, List<T> list2) {
+        int size1 = list1.size();
+        int size2 = list2.size();
+        if (size1 == 0) {
+            return list2;
+        } else if (size2 == 0) {
+            return list1;
+        }
+        ArrayList<T> result = new ArrayList<>(size1 + size2);
         result.addAll(list1);
         result.addAll(list2);
         return result;

@@ -48,6 +48,7 @@ import im.turms.server.common.access.client.dto.ClientMessagePool;
 import im.turms.server.common.access.client.dto.constant.GroupMemberRole;
 import im.turms.server.common.access.client.dto.model.group.GroupMembersWithVersion;
 import im.turms.server.common.access.common.ResponseStatusCode;
+import im.turms.server.common.domain.common.service.BaseService;
 import im.turms.server.common.domain.session.bo.UserSessionsStatus;
 import im.turms.server.common.domain.session.service.UserStatusService;
 import im.turms.server.common.infra.collection.ChunkedArrayList;
@@ -67,7 +68,7 @@ import im.turms.server.common.infra.recycler.ListRecycler;
 import im.turms.server.common.infra.recycler.Recyclable;
 import im.turms.server.common.infra.recycler.SetRecycler;
 import im.turms.server.common.infra.time.DateRange;
-import im.turms.server.common.infra.time.DateUtil;
+import im.turms.server.common.infra.time.DateTimeUtil;
 import im.turms.server.common.infra.validation.ValidGroupMemberRole;
 import im.turms.server.common.infra.validation.Validator;
 import im.turms.server.common.storage.mongo.IMongoCollectionInitializer;
@@ -84,7 +85,7 @@ import im.turms.service.storage.mongo.OperationResultPublisherPool;
  */
 @Service
 @DependsOn(IMongoCollectionInitializer.BEAN_NAME)
-public class GroupMemberService {
+public class GroupMemberService extends BaseService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GroupMemberService.class);
 
@@ -883,6 +884,7 @@ public class GroupMemberService {
     }
 
     public Flux<Long> queryUsersJoinedGroupIds(
+            @Nullable Set<Long> groupIds,
             @NotEmpty Set<Long> userIds,
             @Nullable Integer page,
             @Nullable Integer size) {
@@ -891,7 +893,7 @@ public class GroupMemberService {
         } catch (ResponseException e) {
             return Flux.error(e);
         }
-        return groupMemberRepository.findUsersJoinedGroupIds(userIds, page, size);
+        return groupMemberRepository.findUsersJoinedGroupIds(groupIds, userIds, page, size);
     }
 
     public Mono<Set<Long>> queryMemberIdsInUsersJoinedGroups(
@@ -903,7 +905,7 @@ public class GroupMemberService {
             return Mono.error(e);
         }
         Recyclable<Set<Long>> recyclableSet = SetRecycler.obtain();
-        return queryUsersJoinedGroupIds(userIds, null, null)
+        return queryUsersJoinedGroupIds(null, userIds, null, null)
                 .collect(Collectors.toCollection(recyclableSet::getValue))
                 .flatMap(groupIds -> groupIds.isEmpty()
                         ? PublisherPool.<Long>emptySet()
@@ -1184,7 +1186,7 @@ public class GroupMemberService {
                         : Mono.error(ResponseException.get(
                                 ResponseStatusCode.NOT_GROUP_MEMBER_TO_QUERY_GROUP_MEMBER_INFO)))
                 .flatMap(version -> {
-                    if (DateUtil.isAfterOrSame(lastUpdatedDate, version)) {
+                    if (DateTimeUtil.isAfterOrSame(lastUpdatedDate, version)) {
                         return ResponseExceptionPublisherPool.alreadyUpToUpdate();
                     }
                     return queryGroupMembers(Set.of(groupId), null, null, null, null, null, null)
@@ -1343,10 +1345,12 @@ public class GroupMemberService {
                     if (deletedCount == 0) {
                         return OperationResultPublisherPool.ACKNOWLEDGED_DELETE_RESULT;
                     }
-                    if (groupIds == null) {
-                        groupIdToMembersCache.invalidateAll();
-                    } else {
-                        groupIdToMembersCache.invalidateAll(groupIds);
+                    if (isMemberCacheEnabled) {
+                        if (groupIds == null) {
+                            groupIdToMembersCache.invalidateAll();
+                        } else {
+                            groupIdToMembersCache.invalidateAll(groupIds);
+                        }
                     }
                     if (updateMembersVersion) {
                         return groupVersionService.updateMembersVersion(groupIds)

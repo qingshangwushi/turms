@@ -17,6 +17,7 @@
 
 package im.turms.server.common.domain.common.repository;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.function.Function;
@@ -41,7 +42,7 @@ import im.turms.server.common.storage.mongo.operation.option.QueryOptions;
 public abstract class BaseRepository<T, K> {
 
     protected TurmsMongoClient mongoClient;
-    protected Class<T> entityClass;
+    protected final Class<T> entityClass;
 
     protected BaseRepository(TurmsMongoClient mongoClient, Class<T> entityClass) {
         this.mongoClient = mongoClient;
@@ -140,6 +141,22 @@ public abstract class BaseRepository<T, K> {
         return mongoClient.findIds(entityClass, filter);
     }
 
+    public Mono<List<String>> findUserDefinedAttributes(Collection<String> includedAttributes) {
+        List<String> includedFields = new ArrayList<>(includedAttributes.size());
+        includedAttributes.forEach(attribute -> includedFields
+                .add(DomainFieldName.USER_DEFINED_ATTRIBUTE_PREFIX + attribute));
+        return mongoClient.findFields(entityClass, includedFields)
+                .map(fields -> {
+                    if (fields.isEmpty()) {
+                        return fields;
+                    }
+                    List<String> attributes = new ArrayList<>(fields.size());
+                    fields.forEach(field -> attributes.add(
+                            field.substring(DomainFieldName.USER_DEFINED_ATTRIBUTE_PREFIX_LENGTH)));
+                    return attributes;
+                });
+    }
+
     public Mono<T> findById(K id) {
         return mongoClient.findById(entityClass, id);
     }
@@ -165,6 +182,15 @@ public abstract class BaseRepository<T, K> {
 
     public <R> Mono<R> inTransaction(Function<ClientSession, Mono<R>> action) {
         return mongoClient.inTransaction(action);
+    }
+
+    protected void addUserDefinedAttributesToIncludedFields(
+            List<String> includedFields,
+            Collection<String> userDefinedAttributes) {
+        for (String userDefinedAttribute : userDefinedAttributes) {
+            includedFields
+                    .add(DomainFieldName.USER_DEFINED_ATTRIBUTE_PREFIX + userDefinedAttribute);
+        }
     }
 
 }

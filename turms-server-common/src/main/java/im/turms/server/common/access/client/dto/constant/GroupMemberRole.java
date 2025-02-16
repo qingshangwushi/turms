@@ -47,8 +47,8 @@ public enum GroupMemberRole implements com.google.protobuf.ProtocolMessageEnum {
         com.google.protobuf.RuntimeVersion.validateProtobufGencodeVersion(
                 com.google.protobuf.RuntimeVersion.RuntimeDomain.PUBLIC,
                 /* major= */ 4,
-                /* minor= */ 27,
-                /* patch= */ 0,
+                /* minor= */ 29,
+                /* patch= */ 1,
                 /* suffix= */ "",
                 GroupMemberRole.class.getName());
     }
@@ -130,7 +130,7 @@ public enum GroupMemberRole implements com.google.protobuf.ProtocolMessageEnum {
         return im.turms.server.common.access.client.dto.constant.GroupMemberRoleOuterClass
                 .getDescriptor()
                 .getEnumTypes()
-                .get(0);
+                .getFirst();
     }
 
     private static final GroupMemberRole[] VALUES = values();

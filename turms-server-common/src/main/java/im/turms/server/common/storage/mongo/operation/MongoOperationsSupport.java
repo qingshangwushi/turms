@@ -25,11 +25,14 @@ import java.util.function.Function;
 import jakarta.annotation.Nullable;
 
 import com.mongodb.client.model.IndexModel;
+import com.mongodb.client.model.ValidationAction;
+import com.mongodb.client.model.ValidationLevel;
 import com.mongodb.client.model.changestream.ChangeStreamDocument;
 import com.mongodb.client.model.changestream.FullDocument;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.UpdateResult;
 import com.mongodb.reactivestreams.client.ClientSession;
+import org.bson.BsonDocument;
 import org.bson.Document;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -54,6 +57,13 @@ public interface MongoOperationsSupport {
 
     <T> Mono<T> findOne(Class<T> clazz, Filter filter, @Nullable QueryOptions options);
 
+    Flux<BsonDocument> findMany(String collectionName, Filter filter);
+
+    Flux<BsonDocument> findMany(
+            String collectionName,
+            Filter filter,
+            @Nullable QueryOptions options);
+
     <T> Flux<T> findMany(Class<T> clazz, Filter filter);
 
     <T> Flux<T> findMany(Class<T> clazz, Filter filter, @Nullable QueryOptions options);
@@ -63,6 +73,8 @@ public interface MongoOperationsSupport {
     <T> Flux<T> findAll(Class<T> clazz, @Nullable QueryOptions options);
 
     <T> Flux<T> findIds(Class<T> clazz, Filter filter);
+
+    <T> Mono<List<String>> findFields(Class<T> clazz, Collection<String> includedFields);
 
     Flux<String> findObjectFields(
             Class<?> clazz,
@@ -155,10 +167,18 @@ public interface MongoOperationsSupport {
             Document minimum,
             Document maximum);
 
+    Flux<String> listCollectionNames();
+
+    Mono<Void> renameCollection(String oldCollectionName, String newCollectionName);
+
     /**
      * @return whether the collection has already existed
      */
     Mono<Boolean> createCollectionIfNotExists(Class<?> clazz);
+
+    Mono<Boolean> createCollectionIfNotExists(
+            Class<?> clazz,
+            Collection<String> existingCollectionNames);
 
     Mono<Boolean> collectionExists(Class<?> clazz);
 
@@ -166,12 +186,19 @@ public interface MongoOperationsSupport {
 
     Mono<Boolean> validate(Class<?> clazz, String jsonSchema);
 
+    Mono<Void> updateJsonSchema(
+            Class<?> clazz,
+            BsonDocument jsonSchema,
+            ValidationAction action,
+            ValidationLevel level);
+
     <T> Mono<T> inTransaction(Function<ClientSession, Mono<T>> execute);
+
+    Mono<Boolean> ping();
 
     Mono<Void> disableBalancing(String collectionName);
 
     Mono<Void> enableBalancing(String collectionName);
 
     Mono<Boolean> isBalancerRunning();
-
 }

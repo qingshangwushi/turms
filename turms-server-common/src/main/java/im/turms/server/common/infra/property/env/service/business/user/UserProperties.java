@@ -17,21 +17,15 @@
 
 package im.turms.server.common.infra.property.env.service.business.user;
 
-import java.util.Collections;
-import java.util.List;
-import jakarta.validation.constraints.Min;
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 
-import im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingProperties;
 import im.turms.server.common.infra.property.metadata.Description;
 import im.turms.server.common.infra.property.metadata.GlobalProperty;
 import im.turms.server.common.infra.property.metadata.MutableProperty;
-import im.turms.server.common.infra.validation.LessThanOrEqualTo;
 
 /**
  * @author James Chen
@@ -43,64 +37,32 @@ import im.turms.server.common.infra.validation.LessThanOrEqualTo;
 public class UserProperties {
 
     @NestedConfigurationProperty
-    private FriendRequestProperties friendRequest = new FriendRequestProperties();
+    protected FriendRequestProperties friendRequest = new FriendRequestProperties();
 
     @Description("Whether to respond to client with the OFFLINE status if a user is in INVISIBLE status")
     @GlobalProperty
     @MutableProperty
-    private boolean respondOfflineIfInvisible;
+    protected boolean respondOfflineIfInvisible;
 
     @Description("Whether to delete the two-sided relationships when a user requests to delete a relationship")
     @GlobalProperty
     @MutableProperty
-    private boolean deleteTwoSidedRelationships;
+    protected boolean deleteTwoSidedRelationships;
 
     @Description("Whether to delete a user logically")
     @GlobalProperty
     @MutableProperty
-    private boolean deleteUserLogically = true;
+    protected boolean deleteUserLogically = true;
 
     @Description("Whether to activate a user when added by default")
     @GlobalProperty
     @MutableProperty
-    private boolean activateUserWhenAdded = true;
+    protected boolean activateUserWhenAdded = true;
 
-    @Description("The minimum allowed length for a user's password. "
-            + "If 0, it means the password can be an empty string \"\". "
-            + "If -1, it means the password can be null")
-    @GlobalProperty
-    @MutableProperty
-    @Min(-1)
-    @LessThanOrEqualTo("maxPasswordLength")
-    private int minPasswordLength = -1;
+    @NestedConfigurationProperty
+    protected UserInfoProperties info = new UserInfoProperties();
 
-    @Description("The maximum allowed length for a user's password")
-    @GlobalProperty
-    @MutableProperty
-    @Min(0)
-    private int maxPasswordLength = 16;
-
-    @Description("The maximum allowed length for a user's name")
-    @GlobalProperty
-    @MutableProperty
-    @Min(0)
-    private int maxNameLength = 20;
-
-    @Description("The maximum allowed length for a user's intro")
-    @GlobalProperty
-    @MutableProperty
-    @Min(0)
-    private int maxIntroLength = 100;
-
-    @Description("The maximum allowed length for a user's profile picture")
-    @GlobalProperty
-    @MutableProperty
-    @Min(0)
-    private int maxProfilePictureLength = 100;
-
-    @Description("The list of allowed user settings")
-    @GlobalProperty
-    @MutableProperty
-    private List<CustomSettingProperties> allowedSettings = Collections.emptyList();
+    @NestedConfigurationProperty
+    protected UserSettingsProperties settings = new UserSettingsProperties();
 
 }

@@ -17,6 +17,9 @@ import UserLocation from '../model/user-location';
 import { UserStatus } from '../model/proto/constant/user_status';
 import Validator from '../util/validator';
 import CollectionUtil from '../util/collection-util';
+import { Value } from '../model/proto/model/common/value';
+
+const INVALID_ONLINE_STATUSES = [UserStatus.OFFLINE];
 
 export interface UserInfo {
     userId?: string;
@@ -177,34 +180,43 @@ export default class UserService {
         location?: GeolocationPosition | UserLocation,
         storePassword?: boolean
     }): Promise<Response<void>> {
-        if (Validator.isFalsy(userId)) {
-            return ResponseError.notFalsyPromise('userId');
+        if (null == userId) {
+            return ResponseError.notNullPromise('userId');
         }
         const userInfo: UserInfo = {};
         userInfo.userId = userId;
         userInfo.password = storePassword ? password : null;
-        try {
-            userInfo.deviceType = UserService._parseDeviceType(deviceType) ?? SystemUtil.getDeviceType();
-        } catch (e) {
-            return Promise.reject(e);
+        if (null == deviceType) {
+            userInfo.deviceType = SystemUtil.getDeviceType();
+        } else {
+            deviceType = DataParser.getEnumValue(deviceType, DeviceType);
+            if (null == deviceType) {
+                return ResponseError.invalidEnumValuePromise('deviceType', DeviceType);
+            }
+            userInfo.deviceType = deviceType;
         }
         userInfo.deviceDetails = deviceDetails;
-        try {
-            userInfo.onlineStatus = UserService._parseUserStatus(onlineStatus) || UserStatus.AVAILABLE;
-        } catch (e) {
-            return Promise.reject(e);
+        if (null == onlineStatus) {
+            userInfo.onlineStatus = UserStatus.AVAILABLE;
+        } else {
+            onlineStatus = DataParser.getEnumValue(onlineStatus, UserStatus);
+            if (null == onlineStatus || INVALID_ONLINE_STATUSES.includes(onlineStatus)) {
+                return ResponseError.invalidEnumValuePromise('onlineStatus', UserStatus, INVALID_ONLINE_STATUSES);
+            }
+            userInfo.onlineStatus = onlineStatus;
         }
         if (location) {
             const parsedLocation = location['coords'] as GeolocationCoordinates || location as UserLocation;
-            if (Validator.isFalsy(parsedLocation.longitude)) {
-                return ResponseError.notFalsyPromise('longitude');
+            if (null == parsedLocation.longitude) {
+                return ResponseError.notNullPromise('longitude');
             }
-            if (Validator.isFalsy(parsedLocation.latitude)) {
-                return ResponseError.notFalsyPromise('latitude');
+            if (null == parsedLocation.latitude) {
+                return ResponseError.notNullPromise('latitude');
             }
             userInfo.location = new UserLocation(parsedLocation.longitude,
                 parsedLocation.latitude,
-                (parsedLocation as UserLocation).details);
+                (parsedLocation as UserLocation).details,
+                []);
         }
         this._storePassword = storePassword;
         return new Promise((resolve, reject) => {
@@ -242,8 +254,10 @@ export default class UserService {
                             deviceType: userInfo.deviceType,
                             deviceDetails: userInfo.deviceDetails || {},
                             userStatus: userInfo.onlineStatus,
-                            location: userInfo.location
-                        }
+                            location: userInfo.location,
+                            customAttributes: []
+                        },
+                        customAttributes: []
                     }).then(n => {
                         this._changeToOnline();
                         this._userInfo = userInfo;
@@ -303,7 +317,10 @@ export default class UserService {
             promise = this._turmsClient.driver.disconnect();
         } else {
             promise = this._turmsClient.driver.send({
-                deleteSessionRequest: {}
+                deleteSessionRequest: {
+                    customAttributes: []
+                },
+                customAttributes: []
             }).catch(e => {
                 if (e?.code !== ResponseStatusCode.CLIENT_SESSION_HAS_BEEN_CLOSED) {
                     throw e;
@@ -338,19 +355,20 @@ export default class UserService {
     }: {
         onlineStatus: string | UserStatus
     }): Promise<Response<void>> {
-        if (Validator.isFalsy(onlineStatus)) {
-            return ResponseError.notFalsyPromise('onlineStatus');
+        if (null == onlineStatus) {
+            return ResponseError.notNullPromise('onlineStatus');
         }
-        try {
-            onlineStatus = UserService._parseUserStatus(onlineStatus);
-        } catch (e) {
-            return Promise.reject(e);
+        onlineStatus = DataParser.getEnumValue(onlineStatus, UserStatus);
+        if (null == onlineStatus || INVALID_ONLINE_STATUSES.includes(onlineStatus)) {
+            return ResponseError.invalidEnumValuePromise('role', UserStatus, INVALID_ONLINE_STATUSES);
         }
         return this._turmsClient.driver.send({
             updateUserOnlineStatusRequest: {
                 deviceTypes: [],
-                userStatus: onlineStatus
-            }
+                userStatus: onlineStatus as UserStatus | undefined,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => {
             this._userInfo.onlineStatus = onlineStatus as UserStatus;
             this._updateSharedUserInfo();
@@ -373,19 +391,27 @@ export default class UserService {
     }: {
         deviceTypes: string[] | DeviceType[]
     }): Promise<Response<void>> {
-        if (Validator.isFalsy(deviceTypes)) {
-            return ResponseError.notFalsyPromise('deviceTypes', true);
+        if (Validator.isNullOrEmpty(deviceTypes)) {
+            return ResponseError.notNullOrEmptyPromise('deviceTypes');
         }
         try {
-            deviceTypes = deviceTypes.map((type: string | DeviceType) => UserService._parseDeviceType(type));
+            deviceTypes = deviceTypes.map((type: string | DeviceType) => {
+                const value = DataParser.getEnumValue(type, DeviceType);
+                if (null == value) {
+                    throw ResponseError.invalidEnumValue('deviceType', DeviceType);
+                }
+                return value;
+            });
         } catch (e) {
             return Promise.reject(e);
         }
         return this._turmsClient.driver.send({
             updateUserOnlineStatusRequest: {
                 userStatus: UserStatus.OFFLINE,
-                deviceTypes: deviceTypes as DeviceType[]
-            }
+                deviceTypes: deviceTypes as DeviceType[],
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n));
     }
 
@@ -400,13 +426,16 @@ export default class UserService {
     }: {
         password: string
     }): Promise<Response<void>> {
-        if (Validator.isFalsy(password)) {
-            return ResponseError.notFalsyPromise('password');
+        if (null == password) {
+            return ResponseError.notNullPromise('password');
         }
         return this._turmsClient.driver.send({
             updateUserRequest: {
-                password
-            }
+                password,
+                userDefinedAttributes: {},
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => {
             if (this._storePassword) {
                 this._userInfo.password = password;
@@ -431,26 +460,36 @@ export default class UserService {
      * to upload the profile picture and use the returned URL as {@link profilePicture}.
      * @param profileAccessStrategy - the new profile access strategy.
      * If null, the profile access strategy will not be updated.
+     * @param userDefinedAttributes - the user-defined attributes for upsert.
+     * 1. The attributes must have been defined on the server side via `turms.service.user.info.user-defined-attributes.allowed-attributes`.
+     * Otherwise, the method will throw with {@link ResponseStatusCode#ILLEGAL_ARGUMENT}
+     * if `turms.service.user.info.user-defined-attributes.ignore-unknown-attributes-on-upsert` is false (false by default),
+     * or silently ignored if it is true.
+     * 2. If trying to update existing immutable attribute, throws with {@link ResponseStatusCode#ILLEGAL_ARGUMENT}.
+     * 3. Only public attributes are supported currently, which means other users can find out these attributes
+     * via {@link queryUserProfiles}.
      * @throws {@link ResponseError} if an error occurs.
      */
     updateProfile({
         name,
         intro,
         profilePicture,
-        profileAccessStrategy
+        profileAccessStrategy,
+        userDefinedAttributes
     }: {
         name?: string,
         intro?: string,
         profilePicture?: string,
-        profileAccessStrategy?: string | ProfileAccessStrategy
+        profileAccessStrategy?: string | ProfileAccessStrategy,
+        userDefinedAttributes?: Record<string, Value>
     }): Promise<Response<void>> {
-        if (Validator.areAllFalsy(name, intro, profileAccessStrategy)) {
+        if (Validator.areAllNullOrEmpty(name, intro, profilePicture, profileAccessStrategy, userDefinedAttributes)) {
             return Promise.resolve(Response.nullValue());
         }
-        if (typeof profileAccessStrategy === 'string') {
-            profileAccessStrategy = ProfileAccessStrategy[profileAccessStrategy] as ProfileAccessStrategy;
-            if (Validator.isFalsy(profileAccessStrategy)) {
-                return ResponseError.notFalsyPromise('profileAccessStrategy');
+        if (null != profileAccessStrategy) {
+            profileAccessStrategy = DataParser.getEnumValue(profileAccessStrategy, ProfileAccessStrategy);
+            if (null == profileAccessStrategy) {
+                return ResponseError.invalidEnumValuePromise('profileAccessStrategy', ProfileAccessStrategy);
             }
         }
         return this._turmsClient.driver.send({
@@ -458,8 +497,11 @@ export default class UserService {
                 name,
                 intro,
                 profilePicture,
-                profileAccessStrategy
-            }
+                profileAccessStrategy: profileAccessStrategy as ProfileAccessStrategy | undefined,
+                userDefinedAttributes,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n));
     }
 
@@ -487,8 +529,10 @@ export default class UserService {
             queryUserProfilesRequest: {
                 userIds: CollectionUtil.uniqueArray(userIds),
                 lastUpdatedDate: DataParser.getDateTimeStr(lastUpdatedDate),
-                fieldsToHighlight: []
-            }
+                fieldsToHighlight: [],
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n, data =>
             NotificationUtil.transformOrEmpty(data.userInfosWithVersion?.userInfos)));
     }
@@ -519,10 +563,82 @@ export default class UserService {
                 name: name,
                 fieldsToHighlight: highlight ? [1] : [],
                 skip: skip,
-                limit: limit
-            }
+                limit: limit,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n, (data) =>
             NotificationUtil.transform(data.userInfosWithVersion?.userInfos)));
+    }
+
+    /**
+     * Upsert user settings, such as "preferred language", "new message alert", etc.
+     * Note that only the settings specified in `turms.service.user.settings.allowed-settings` can be upserted.
+     *
+     * @remarks
+     * Notifications:
+     * * If the server property `turms.service.notification.user-setting-updated.notify-requester-other-online-sessions` is true (true by default),
+     *   the server will send a user settings updated notification to all other online sessions of the logged-in user actively.
+     *
+     * @param settings - the user settings to upsert.
+     * @throws {@link ResponseError} if an error occurs.
+     * * If trying to update any existing immutable setting, throws {@link {@link ResponseError}} with the code {@link ResponseStatusCode#ILLEGAL_ARGUMENT}
+     * * If trying to upsert an unknown setting and the server property `turms.service.user.settings.ignore-unknown-settings-on-upsert` is
+     *   false (false by default), throws {@link {@link ResponseError}} with the code {@link ResponseStatusCode#ILLEGAL_ARGUMENT}.
+     */
+    upsertUserSettings(settings: Record<string, any>): Promise<Response<void>> {
+        if (Object.keys(settings).length === 0) {
+            return Promise.resolve(Response.nullValue());
+        }
+        return this._turmsClient.driver.send({
+            updateUserSettingsRequest: {
+                settings,
+                customAttributes: []
+            },
+            customAttributes: []
+        }).then(n => Response.fromNotification(n));
+    }
+
+    /**
+     * Delete user settings.
+     *
+     * @remarks
+     * Notifications:
+     * * If the server property `turms.service.notification.user-setting-deleted.notify-requester-other-online-sessions` is true (true by default),
+     *   the server will send a user settings deleted notification to all other online sessions of the logged-in user actively.
+     *
+     * @param names - the names of the user settings to delete. If null, all deletable user settings will be deleted.
+     * @throws {@link ResponseError} if an error occurs.
+     * * If trying to delete any non-deletable setting, throws {@link {@link ResponseError}} with the code {@link ResponseStatusCode#ILLEGAL_ARGUMENT}.
+     */
+    deleteUserSettings(names?: string[]): Promise<Response<void>> {
+        return this._turmsClient.driver.send({
+            deleteUserSettingsRequest: {
+                names: CollectionUtil.uniqueArray(names),
+                customAttributes: []
+            },
+            customAttributes: []
+        }).then(n => Response.fromNotification(n));
+    }
+
+    /**
+     * Find user settings.
+     *
+     * @param names - the names of the user settings to query. If null, all user settings will be returned.
+     * @param lastUpdatedDate - the last updated date of user settings stored locally.
+     * The server will only return user settings if a setting has been updated after {@link lastUpdatedDate}.
+     * @throws {@link ResponseError} if an error occurs.
+     */
+    queryUserSettings(names?: string[], lastUpdatedDate?: Date): Promise<Response<ParsedModel.UserSettings | undefined>> {
+        return this._turmsClient.driver.send({
+            queryUserSettingsRequest: {
+                names: CollectionUtil.uniqueArray(names),
+                lastUpdatedDateStart: DataParser.getDateTimeStr(lastUpdatedDate),
+                customAttributes: []
+            },
+            customAttributes: []
+        }).then(n => Response.fromNotification(n, data =>
+            NotificationUtil.transform(data.userSettings)));
     }
 
     /**
@@ -555,11 +671,11 @@ export default class UserService {
         withDistance?: boolean,
         withUserInfo?: boolean
     }): Promise<Response<ParsedModel.NearbyUser[]>> {
-        if (Validator.isFalsy(latitude)) {
-            return ResponseError.notFalsyPromise('latitude');
+        if (null == latitude) {
+            return ResponseError.notNullPromise('latitude');
         }
-        if (Validator.isFalsy(longitude)) {
-            return ResponseError.notFalsyPromise('longitude');
+        if (null == longitude) {
+            return ResponseError.notNullPromise('longitude');
         }
         return this._turmsClient.driver.send({
             queryNearbyUsersRequest: {
@@ -569,8 +685,10 @@ export default class UserService {
                 maxDistance,
                 withCoordinates,
                 withDistance,
-                withUserInfo
-            }
+                withUserInfo,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n, data => NotificationUtil.transformOrEmpty(data.nearbyUsers?.nearbyUsers)));
     }
 
@@ -581,18 +699,20 @@ export default class UserService {
      * @returns a list of online status of users.
      * @throws {@link ResponseError} if an error occurs.
      */
-    queryOnlineStatusesRequest({
+    queryOnlineStatuses({
         userIds
     }: {
         userIds: string[]
     }): Promise<Response<ParsedModel.UserOnlineStatus[]>> {
-        if (Validator.isFalsy(userIds)) {
+        if (Validator.isNullOrEmpty(userIds)) {
             return Promise.resolve(Response.emptyList());
         }
         return this._turmsClient.driver.send({
             queryUserOnlineStatusesRequest: {
-                userIds
-            }
+                userIds,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n, data =>
             NotificationUtil.transformOrEmpty(data.userOnlineStatuses?.statuses)));
     }
@@ -629,10 +749,13 @@ export default class UserService {
         return this._turmsClient.driver.send({
             queryRelationshipsRequest: {
                 userIds: relatedUserIds || [],
+                userIdsForCommonRelationships: [],
                 blocked: isBlocked,
                 groupIndexes: groupIndexes || [],
-                lastUpdatedDate: DataParser.getDateTimeStr(lastUpdatedDate)
-            }
+                lastUpdatedDate: DataParser.getDateTimeStr(lastUpdatedDate),
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n, data => NotificationUtil.transform(data.userRelationshipsWithVersion)));
     }
 
@@ -662,10 +785,13 @@ export default class UserService {
     } = {}): Promise<Response<ParsedModel.LongsWithVersion | undefined>> {
         return this._turmsClient.driver.send({
             queryRelatedUserIdsRequest: {
+                userIdsForCommonRelationships: [],
                 blocked: isBlocked,
                 groupIndexes: groupIndexes || [],
-                lastUpdatedDate: DataParser.getDateTimeStr(lastUpdatedDate)
-            }
+                lastUpdatedDate: DataParser.getDateTimeStr(lastUpdatedDate),
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n, data => NotificationUtil.getLongsWithVersion(data)));
     }
 
@@ -746,18 +872,20 @@ export default class UserService {
         isBlocked: boolean,
         groupIndex?: number
     }): Promise<Response<void>> {
-        if (Validator.isFalsy(userId)) {
-            return ResponseError.notFalsyPromise('userId');
+        if (null == userId) {
+            return ResponseError.notNullPromise('userId');
         }
-        if (Validator.isFalsy(isBlocked)) {
-            return ResponseError.notFalsyPromise('isBlocked');
+        if (null == isBlocked) {
+            return ResponseError.notNullPromise('isBlocked');
         }
         return this._turmsClient.driver.send({
             createRelationshipRequest: {
                 userId,
                 blocked: isBlocked,
-                groupIndex
-            }
+                groupIndex,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n));
     }
 
@@ -844,15 +972,17 @@ export default class UserService {
         deleteGroupIndex?: number,
         targetGroupIndex?: number
     }): Promise<Response<void>> {
-        if (Validator.isFalsy(relatedUserId)) {
-            return ResponseError.notFalsyPromise('relatedUserId');
+        if (null == relatedUserId) {
+            return ResponseError.notNullPromise('relatedUserId');
         }
         return this._turmsClient.driver.send({
             deleteRelationshipRequest: {
                 userId: relatedUserId,
                 groupIndex: deleteGroupIndex,
-                targetGroupIndex
-            }
+                targetGroupIndex,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n));
     }
 
@@ -880,18 +1010,20 @@ export default class UserService {
         isBlocked?: boolean,
         groupIndex?: number
     }): Promise<Response<void>> {
-        if (Validator.isFalsy(relatedUserId)) {
-            return ResponseError.notFalsyPromise('relatedUserId');
+        if (null == relatedUserId) {
+            return ResponseError.notNullPromise('relatedUserId');
         }
-        if (Validator.areAllFalsy(isBlocked, groupIndex)) {
+        if (Validator.areAllNull(isBlocked, groupIndex)) {
             return Promise.resolve(Response.nullValue());
         }
         return this._turmsClient.driver.send({
             updateRelationshipRequest: {
                 userId: relatedUserId,
                 blocked: isBlocked,
-                newGroupIndex: groupIndex
-            }
+                newGroupIndex: groupIndex,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n));
     }
 
@@ -917,17 +1049,19 @@ export default class UserService {
         recipientId: string,
         content: string
     }): Promise<Response<string>> {
-        if (Validator.isFalsy(recipientId)) {
-            return ResponseError.notFalsyPromise('recipientId');
+        if (null == recipientId) {
+            return ResponseError.notNullPromise('recipientId');
         }
-        if (Validator.isFalsy(content)) {
-            return ResponseError.notFalsyPromise('content');
+        if (null == content) {
+            return ResponseError.notNullPromise('content');
         }
         return this._turmsClient.driver.send({
             createFriendRequestRequest: {
                 recipientId,
-                content
-            }
+                content,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n, data => NotificationUtil.getLongOrThrow(data)));
     }
 
@@ -956,13 +1090,15 @@ export default class UserService {
     }: {
         requestId: string
     }): Promise<Response<void>> {
-        if (Validator.isFalsy(requestId)) {
-            return ResponseError.notFalsyPromise('requestId');
+        if (null == requestId) {
+            return ResponseError.notNullPromise('requestId');
         }
         return this._turmsClient.driver.send({
             deleteFriendRequestRequest: {
-                requestId
-            }
+                requestId,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n));
     }
 
@@ -999,24 +1135,24 @@ export default class UserService {
         responseAction: string | ResponseAction,
         reason?: string
     }): Promise<Response<void>> {
-        if (Validator.isFalsy(requestId)) {
-            return ResponseError.notFalsyPromise('requestId');
+        if (null == requestId) {
+            return ResponseError.notNullPromise('requestId');
         }
-        if (Validator.isFalsy(responseAction)) {
-            return ResponseError.notFalsyPromise('responseAction');
+        if (null == responseAction) {
+            return ResponseError.notNullPromise('responseAction');
         }
-        if (typeof responseAction === 'string') {
-            responseAction = ResponseAction[responseAction] as ResponseAction;
-            if (Validator.isFalsy(responseAction)) {
-                return ResponseError.notFalsyPromise('reponseAction');
-            }
+        responseAction = DataParser.getEnumValue(responseAction, ResponseAction);
+        if (null == responseAction) {
+            return ResponseError.invalidEnumValuePromise('responseAction', ResponseAction);
         }
         return this._turmsClient.driver.send({
             updateFriendRequestRequest: {
                 requestId: requestId,
-                responseAction: responseAction,
-                reason
-            }
+                responseAction,
+                reason,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n));
     }
 
@@ -1043,8 +1179,10 @@ export default class UserService {
         return this._turmsClient.driver.send({
             queryFriendRequestsRequest: {
                 areSentByMe,
-                lastUpdatedDate: DataParser.getDateTimeStr(lastUpdatedDate)
-            }
+                lastUpdatedDate: DataParser.getDateTimeStr(lastUpdatedDate),
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n, data => NotificationUtil.transform(data.userFriendRequestsWithVersion)));
     }
 
@@ -1060,13 +1198,15 @@ export default class UserService {
     }: {
         name: string
     }): Promise<Response<number>> {
-        if (Validator.isFalsy(name)) {
-            return ResponseError.notFalsyPromise('name');
+        if (null == name) {
+            return ResponseError.notNullPromise('name');
         }
         return this._turmsClient.driver.send({
             createRelationshipGroupRequest: {
-                name
-            }
+                name,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n, data => parseInt(NotificationUtil.getLongOrThrow(data))));
     }
 
@@ -1093,14 +1233,16 @@ export default class UserService {
         groupIndex: number,
         targetGroupIndex?: number
     }): Promise<Response<void>> {
-        if (Validator.isFalsy(groupIndex)) {
-            return ResponseError.notFalsyPromise('groupIndex');
+        if (null == groupIndex) {
+            return ResponseError.notNullPromise('groupIndex');
         }
         return this._turmsClient.driver.send({
             deleteRelationshipGroupRequest: {
                 groupIndex,
-                targetGroupIndex
-            }
+                targetGroupIndex,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n));
     }
 
@@ -1125,17 +1267,19 @@ export default class UserService {
         groupIndex: number,
         newName: string
     }): Promise<Response<void>> {
-        if (Validator.isFalsy(groupIndex)) {
-            return ResponseError.notFalsyPromise('groupIndex');
+        if (null == groupIndex) {
+            return ResponseError.notNullPromise('groupIndex');
         }
-        if (Validator.isFalsy(newName)) {
-            return ResponseError.notFalsyPromise('newName');
+        if (null == newName) {
+            return ResponseError.notNullPromise('newName');
         }
         return this._turmsClient.driver.send({
             updateRelationshipGroupRequest: {
                 groupIndex,
-                newName
-            }
+                newName,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n));
     }
 
@@ -1156,8 +1300,10 @@ export default class UserService {
     } = {}): Promise<Response<ParsedModel.UserRelationshipGroupsWithVersion | undefined>> {
         return this._turmsClient.driver.send({
             queryRelationshipGroupsRequest: {
-                lastUpdatedDate: DataParser.getDateTimeStr(lastUpdatedDate)
-            }
+                lastUpdatedDate: DataParser.getDateTimeStr(lastUpdatedDate),
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n, data => NotificationUtil.transform(data.userRelationshipGroupsWithVersion)));
     }
 
@@ -1182,17 +1328,19 @@ export default class UserService {
         relatedUserId: string,
         groupIndex: number
     }): Promise<Response<void>> {
-        if (Validator.isFalsy(relatedUserId)) {
-            return ResponseError.notFalsyPromise('relatedUserId');
+        if (null == relatedUserId) {
+            return ResponseError.notNullPromise('relatedUserId');
         }
-        if (Validator.isFalsy(groupIndex)) {
-            return ResponseError.notFalsyPromise('groupIndex');
+        if (null == groupIndex) {
+            return ResponseError.notNullPromise('groupIndex');
         }
         return this._turmsClient.driver.send({
             updateRelationshipRequest: {
                 userId: relatedUserId,
-                newGroupIndex: groupIndex
-            }
+                newGroupIndex: groupIndex,
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n));
     }
 
@@ -1222,54 +1370,21 @@ export default class UserService {
         longitude: number,
         details?: Record<string, string>
     }): Promise<Response<void>> {
-        if (Validator.isFalsy(latitude)) {
-            return ResponseError.notFalsyPromise('latitude');
+        if (null == latitude) {
+            return ResponseError.notNullPromise('latitude');
         }
-        if (Validator.isFalsy(longitude)) {
-            return ResponseError.notFalsyPromise('longitude');
+        if (null == longitude) {
+            return ResponseError.notNullPromise('longitude');
         }
         return this._turmsClient.driver.send({
             updateUserLocationRequest: {
                 latitude,
                 longitude,
-                details: details || {}
-            }
+                details: details || {},
+                customAttributes: []
+            },
+            customAttributes: []
         }).then(n => Response.fromNotification(n));
-    }
-
-    private static _parseDeviceType(deviceType: string | DeviceType): DeviceType {
-        if (typeof deviceType === 'string') {
-            deviceType = DeviceType[deviceType] as DeviceType;
-            if (Validator.isFalsy(deviceType)) {
-                throw ResponseError.from({
-                    code: ResponseStatusCode.ILLEGAL_ARGUMENT,
-                    reason: 'illegal DeviceType'
-                });
-            }
-            return deviceType;
-        } else if (typeof deviceType === 'number') {
-            if (deviceType >= 0 && deviceType <= DeviceType.UNKNOWN) {
-                return deviceType;
-            } else {
-                throw ResponseError.from({
-                    code: ResponseStatusCode.ILLEGAL_ARGUMENT,
-                    reason: 'illegal DeviceType'
-                });
-            }
-        }
-    }
-
-    private static _parseUserStatus(onlineStatus: string | UserStatus): UserStatus {
-        if (typeof onlineStatus === 'string') {
-            onlineStatus = UserStatus[onlineStatus] as UserStatus;
-            if (Validator.isFalsy(onlineStatus)) {
-                ResponseError.notFalsy('onlineStatus');
-            }
-        }
-        if (onlineStatus === UserStatus.OFFLINE) {
-            throw ResponseError.illegalParam('onlineStatus cannot be OFFLINE');
-        }
-        return onlineStatus;
     }
 
     private _updateSharedUserInfo(): void {

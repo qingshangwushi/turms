@@ -1,20 +1,19 @@
 #include "turms/client/driver/turms_driver.h"
 
-namespace turms {
-namespace client {
-namespace driver {
+namespace turms::client::driver {
 TurmsDriver::TurmsDriver(const std::shared_ptr<boost::asio::io_context>& ioContext,
-                         const boost::optional<std::string>& host,
-                         const boost::optional<int>& port,
-                         const boost::optional<int>& connectTimeoutMillis,
-                         const boost::optional<int>& requestTimeoutMillis,
-                         const boost::optional<int>& minRequestIntervalMillis,
-                         const boost::optional<int>& heartbeatIntervalMillis)
+                         const std::optional<std::string>& host,
+                         const std::optional<int>& port,
+                         const std::optional<int>& connectTimeoutMillis,
+                         const std::optional<int>& requestTimeoutMillis,
+                         const std::optional<int>& minRequestIntervalMillis,
+                         const std::optional<int>& heartbeatIntervalMillis)
     : ioContext_(ioContext),
       connectionService_(*ioContext, stateStore_, host, port, connectTimeoutMillis),
       heartbeatService_(*ioContext, stateStore_, heartbeatIntervalMillis),
-      messageService_(*ioContext, stateStore_, requestTimeoutMillis, minRequestIntervalMillis) {
-    connectionService_.addOnDisconnectedListener([this](const boost::optional<std::exception>& e) {
+      protocolMessageService_(
+          *ioContext, stateStore_, requestTimeoutMillis, minRequestIntervalMillis) {
+    connectionService_.addOnDisconnectedListener([this](const std::optional<std::exception>& e) {
         onConnectionDisconnected(e);
     });
     connectionService_.addMessageListener([this](const std::vector<uint8_t>& message) {
@@ -24,7 +23,7 @@ TurmsDriver::TurmsDriver(const std::shared_ptr<boost::asio::io_context>& ioConte
 
 auto TurmsDriver::close() -> boost::future<void> {
     auto promise = std::make_shared<boost::promise<void>>();
-    boost::asio::post(*ioContext_, [this, promise]() {
+    post(*ioContext_, [this, promise]() {
         auto count = std::make_shared<std::atomic_int>(3);
         connectionService_.close().then([count, promise](const boost::future<void>&) mutable {
             if (--(*count) == 0) {
@@ -36,7 +35,7 @@ auto TurmsDriver::close() -> boost::future<void> {
                 promise->set_value();
             }
         });
-        messageService_.close().then([count, promise](const boost::future<void>&) mutable {
+        protocolMessageService_.close().then([count, promise](const boost::future<void>&) mutable {
             if (--(*count) == 0) {
                 promise->set_value();
             }
@@ -61,13 +60,13 @@ auto TurmsDriver::isHeartbeatRunning() const -> bool {
     return heartbeatService_.isRunning();
 }
 
-auto TurmsDriver::connect(const boost::optional<std::string>& host,
-                          const boost::optional<int>& port,
-                          const boost::optional<int>& connectTimeoutMillis) -> boost::future<void> {
+auto TurmsDriver::connect(const std::optional<std::string>& host,
+                          const std::optional<int>& port,
+                          const std::optional<int>& connectTimeoutMillis) -> boost::future<void> {
     return connectionService_.connect(host, port, connectTimeoutMillis);
 }
 
-auto TurmsDriver::disconnect() -> boost::future<void> {
+auto TurmsDriver::disconnect() const -> boost::future<void> {
     return connectionService_.disconnect();
 }
 
@@ -75,17 +74,17 @@ auto TurmsDriver::isConnected() const -> bool {
     return stateStore_.isConnected;
 }
 
-auto TurmsDriver::connectionMetrics() const -> boost::optional<TcpMetrics> {
-    auto* ptr = stateStore_.tcp.get();
-    return ptr == nullptr ? boost::none : boost::make_optional(ptr->metrics());
+auto TurmsDriver::connectionMetrics() const -> std::optional<TcpMetrics> {
+    const auto* ptr = stateStore_.tcp.get();
+    return ptr == nullptr ? std::nullopt : std::optional(ptr->metrics());
 }
 
 auto TurmsDriver::send(TurmsRequest& request) -> boost::future<TurmsNotification> {
     const bool isCreateSessionRequest = request.has_create_session_request();
-    return messageService_.sendRequest(request).then(
-        [weakThis = std::weak_ptr<TurmsDriver>(shared_from_this()),
+    return protocolMessageService_.sendRequest(request).then(
+        [weakThis = std::weak_ptr(shared_from_this()),
          isCreateSessionRequest](boost::future<TurmsNotification> response) {
-            if (auto sharedThis = weakThis.lock()) {
+            if (const auto sharedThis = weakThis.lock()) {
                 if (isCreateSessionRequest) {
                     sharedThis->heartbeatService_.start();
                 }
@@ -98,10 +97,10 @@ auto TurmsDriver::stateStore() -> StateStore& {
     return stateStore_;
 }
 
-auto TurmsDriver::onConnectionDisconnected(const boost::optional<std::exception>& e) -> void {
+auto TurmsDriver::onConnectionDisconnected(const std::optional<std::exception>& e) -> void {
     stateStore_.reset();
     heartbeatService_.onDisconnected(e);
-    messageService_.onDisconnected(e);
+    protocolMessageService_.onDisconnected(e);
 }
 
 auto TurmsDriver::onMessage(const std::vector<uint8_t>& message) -> void {
@@ -120,7 +119,7 @@ auto TurmsDriver::onMessage(const std::vector<uint8_t>& message) -> void {
         }
         if (notification.has_close_status()) {
             stateStore_.isSessionOpen = false;
-            messageService_.didReceiveNotification(notification);
+            protocolMessageService_.didReceiveNotification(notification);
             // We must close the connection after finishing handling the notification
             // to ensure notification handlers will always be triggered before connection close
             // handlers.
@@ -132,9 +131,7 @@ auto TurmsDriver::onMessage(const std::vector<uint8_t>& message) -> void {
             stateStore_.sessionId = session.session_id();
             stateStore_.serverId = session.server_id();
         }
-        messageService_.didReceiveNotification(notification);
+        protocolMessageService_.didReceiveNotification(notification);
     }
 }
-}  // namespace driver
-}  // namespace client
-}  // namespace turms
+}  // namespace turms::client::driver

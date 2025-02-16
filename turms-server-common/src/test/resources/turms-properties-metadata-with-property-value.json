@@ -36,6 +36,17 @@
           "value": true
         }
       },
+      "debug": {
+        "enabled": {
+          "deprecated": false,
+          "description": "Whether to enable debug APIs",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean",
+          "value": false
+        }
+      },
       "enabled": {
         "deprecated": false,
         "description": "Whether to enable the APIs for administrators",
@@ -46,16 +57,36 @@
         "value": true
       },
       "http": {
+        "connectTimeoutMillis": {
+          "deprecated": false,
+          "description": "The connect timeout",
+          "global": false,
+          "mutable": false,
+          "sensitive": false,
+          "type": "int",
+          "value": 30000
+        },
         "host": {
           "deprecated": false,
+          "description": "The bind host",
           "global": false,
           "mutable": false,
           "sensitive": false,
           "type": "string",
           "value": "0.0.0.0"
         },
+        "idleTimeoutMillis": {
+          "deprecated": false,
+          "description": "The idle timeout on the connection when it is waiting for an HTTP request to come. Once the timeout is reached, the connection will be closed",
+          "global": false,
+          "mutable": false,
+          "sensitive": false,
+          "type": "int",
+          "value": 180000
+        },
         "maxRequestBodySizeBytes": {
           "deprecated": false,
+          "description": "The max request body size in bytes",
           "global": false,
           "mutable": false,
           "sensitive": false,
@@ -64,11 +95,21 @@
         },
         "port": {
           "deprecated": false,
+          "description": "The bind port",
           "global": false,
           "mutable": false,
           "sensitive": false,
           "type": "int",
           "value": 5510
+        },
+        "requestReadTimeoutMillis": {
+          "deprecated": false,
+          "description": "The read timeout on the connection when it is waiting for an HTTP request to be fully read. Once the timeout is reached, the connection will be closed",
+          "global": false,
+          "mutable": false,
+          "sensitive": false,
+          "type": "int",
+          "value": 180000
         }
       },
       "log": {
@@ -420,6 +461,17 @@
           "value": true
         }
       },
+      "debug": {
+        "enabled": {
+          "deprecated": false,
+          "description": "Whether to enable debug APIs",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean",
+          "value": false
+        }
+      },
       "enabled": {
         "deprecated": false,
         "description": "Whether to enable the APIs for administrators",
@@ -430,16 +482,36 @@
         "value": true
       },
       "http": {
+        "connectTimeoutMillis": {
+          "deprecated": false,
+          "description": "The connect timeout",
+          "global": false,
+          "mutable": false,
+          "sensitive": false,
+          "type": "int",
+          "value": 30000
+        },
         "host": {
           "deprecated": false,
+          "description": "The bind host",
           "global": false,
           "mutable": false,
           "sensitive": false,
           "type": "string",
           "value": "0.0.0.0"
         },
+        "idleTimeoutMillis": {
+          "deprecated": false,
+          "description": "The idle timeout on the connection when it is waiting for an HTTP request to come. Once the timeout is reached, the connection will be closed",
+          "global": false,
+          "mutable": false,
+          "sensitive": false,
+          "type": "int",
+          "value": 180000
+        },
         "maxRequestBodySizeBytes": {
           "deprecated": false,
+          "description": "The max request body size in bytes",
           "global": false,
           "mutable": false,
           "sensitive": false,
@@ -448,11 +520,21 @@
         },
         "port": {
           "deprecated": false,
+          "description": "The bind port",
           "global": false,
           "mutable": false,
           "sensitive": false,
           "type": "int",
           "value": 9510
+        },
+        "requestReadTimeoutMillis": {
+          "deprecated": false,
+          "description": "The read timeout on the connection when it is waiting for an HTTP request to be fully read. Once the timeout is reached, the connection will be closed",
+          "global": false,
+          "mutable": false,
+          "sensitive": false,
+          "type": "int",
+          "value": 180000
         }
       },
       "log": {
@@ -629,6 +711,8 @@
             "DELETE_CONVERSATION_SETTINGS_REQUEST",
             "QUERY_CONVERSATION_SETTINGS_REQUEST",
             "UPDATE_CONVERSATION_SETTINGS_REQUEST",
+            "CREATE_MESSAGE_REACTIONS_REQUEST",
+            "DELETE_MESSAGE_REACTIONS_REQUEST",
             "KIND_NOT_SET"
           ],
           "sensitive": false,
@@ -739,6 +823,8 @@
             "DELETE_CONVERSATION_SETTINGS_REQUEST",
             "QUERY_CONVERSATION_SETTINGS_REQUEST",
             "UPDATE_CONVERSATION_SETTINGS_REQUEST",
+            "CREATE_MESSAGE_REACTIONS_REQUEST",
+            "DELETE_MESSAGE_REACTIONS_REQUEST",
             "KIND_NOT_SET"
           ],
           "sensitive": false,
@@ -2225,6 +2311,191 @@
       }
     }
   },
+  "mockNode": {
+    "adminApi": {
+      "address": {
+        "advertiseHost": {
+          "deprecated": false,
+          "description": "The advertise address of the local node exposed to admins. (e.g. 100.131.251.96)",
+          "global": false,
+          "mutable": true,
+          "sensitive": false,
+          "type": "string",
+          "value": ""
+        },
+        "advertiseStrategy": {
+          "deprecated": false,
+          "description": "The advertise strategy is used to decide which type of address should be used so that admins can access admin APIs and metrics APIs",
+          "global": false,
+          "mutable": true,
+          "options": [
+            "ADVERTISE_ADDRESS",
+            "BIND_ADDRESS",
+            "PRIVATE_ADDRESS",
+            "PUBLIC_ADDRESS"
+          ],
+          "sensitive": false,
+          "type": "enum",
+          "value": "PRIVATE_ADDRESS"
+        },
+        "attachPortToHost": {
+          "deprecated": false,
+          "description": "Whether to attach the local port to the host.\ne.g. The local host is 100.131.251.96, and the port is 9510 so the service address will be 100.131.251.96:9510",
+          "global": false,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean",
+          "value": true
+        }
+      },
+      "debug": {
+        "enabled": {
+          "deprecated": false,
+          "description": "Whether to enable debug APIs",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean",
+          "value": false
+        }
+      },
+      "enabled": {
+        "deprecated": false,
+        "description": "Whether to enable the APIs for administrators",
+        "global": false,
+        "mutable": false,
+        "sensitive": false,
+        "type": "boolean",
+        "value": true
+      },
+      "http": {
+        "connectTimeoutMillis": {
+          "deprecated": false,
+          "description": "The connect timeout",
+          "global": false,
+          "mutable": false,
+          "sensitive": false,
+          "type": "int",
+          "value": 30000
+        },
+        "host": {
+          "deprecated": false,
+          "description": "The bind host",
+          "global": false,
+          "mutable": false,
+          "sensitive": false,
+          "type": "string",
+          "value": "0.0.0.0"
+        },
+        "idleTimeoutMillis": {
+          "deprecated": false,
+          "description": "The idle timeout on the connection when it is waiting for an HTTP request to come. Once the timeout is reached, the connection will be closed",
+          "global": false,
+          "mutable": false,
+          "sensitive": false,
+          "type": "int",
+          "value": 180000
+        },
+        "maxRequestBodySizeBytes": {
+          "deprecated": false,
+          "description": "The max request body size in bytes",
+          "global": false,
+          "mutable": false,
+          "sensitive": false,
+          "type": "int",
+          "value": 10485760
+        },
+        "port": {
+          "deprecated": false,
+          "description": "The bind port",
+          "global": false,
+          "mutable": false,
+          "sensitive": false,
+          "type": "int",
+          "value": 21510
+        },
+        "requestReadTimeoutMillis": {
+          "deprecated": false,
+          "description": "The read timeout on the connection when it is waiting for an HTTP request to be fully read. Once the timeout is reached, the connection will be closed",
+          "global": false,
+          "mutable": false,
+          "sensitive": false,
+          "type": "int",
+          "value": 180000
+        }
+      },
+      "log": {
+        "enabled": {
+          "deprecated": false,
+          "description": "Whether to log API calls",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean",
+          "value": true
+        },
+        "logRequestParams": {
+          "deprecated": false,
+          "description": "Whether to log the parameters of requests",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean",
+          "value": true
+        }
+      },
+      "rateLimiting": {
+        "capacity": {
+          "deprecated": false,
+          "description": "The maximum number of tokens that the bucket can hold",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int",
+          "value": 50
+        },
+        "initialTokens": {
+          "deprecated": false,
+          "description": "The initial number of tokens for new session",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int",
+          "value": 50
+        },
+        "refillIntervalMillis": {
+          "deprecated": false,
+          "description": "The time interval to refill. 0 means never refill",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int",
+          "value": 1000
+        },
+        "tokensPerPeriod": {
+          "deprecated": false,
+          "description": "Refills the bucket with the specified number of tokens per period if the bucket is not full",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int",
+          "value": 50
+        }
+      },
+      "useAuthentication": {
+        "deprecated": false,
+        "description": "Whether to use authentication. If false, all HTTP requesters will personate the root user and all HTTP requests will be passed. You may set it to false when you want to manage authentication via security groups, NACL, etc",
+        "global": false,
+        "mutable": false,
+        "sensitive": false,
+        "type": "boolean",
+        "value": true
+      }
+    },
+    "mongo": {
+      "admin": {}
+    }
+  },
   "plugin": {
     "dir": {
       "deprecated": false,
@@ -2253,6 +2524,19 @@
         "sensitive": false,
         "type": "boolean",
         "value": false
+      },
+      "duplicateClassLoadStrategy": {
+        "deprecated": false,
+        "description": "The strategy to handle duplicate classes defined by both the Turms server and the plugin when loading classes by the plugin classloader",
+        "global": false,
+        "mutable": false,
+        "options": [
+          "THROW_EXCEPTION",
+          "PARENT_FIRST"
+        ],
+        "sensitive": false,
+        "type": "enum",
+        "value": "PARENT_FIRST"
       }
     },
     "js": {
@@ -2376,6 +2660,15 @@
           "value": ""
         }
       }
+    },
+    "watchDir": {
+      "deprecated": false,
+      "description": "Whether to watch the plugin directory. If enabled, the server will load and unload plugins automatically when a plugin is added or removed from the directory",
+      "global": false,
+      "mutable": false,
+      "sensitive": false,
+      "type": "boolean",
+      "value": false
     }
   },
   "security": {
@@ -2385,37 +2678,28 @@
           "corruptedFrame": {
             "blockLevels": {
               "deprecated": false,
-              "elementType": "im.turms.server.common.infra.property.env.common.security.AutoBlockItemProperties$BlockLevel",
+              "elementType": "im.turms.server.common.infra.property.env.common.security.AutoBlockItemProperties$BlockLevelProperties",
               "global": false,
               "mutable": false,
               "sensitive": false,
               "type": "java.util.List",
               "value": [
                 {
-                  "blockDurationSeconds": 600,
-                  "goNextLevelTriggerTimes": 1,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 600000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 5
                 },
                 {
-                  "blockDurationSeconds": 1800,
-                  "goNextLevelTriggerTimes": 1,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 1800000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 1
                 },
                 {
-                  "blockDurationSeconds": 3600,
-                  "goNextLevelTriggerTimes": 0,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 3600000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 1
                 }
               ]
-            },
-            "blockTriggerTimes": {
-              "deprecated": false,
-              "description": "Block the client when the block condition is triggered the times",
-              "global": false,
-              "mutable": false,
-              "sensitive": false,
-              "type": "int",
-              "value": 5
             },
             "enabled": {
               "deprecated": false,
@@ -2423,43 +2707,34 @@
               "mutable": false,
               "sensitive": false,
               "type": "boolean",
-              "value": false
+              "value": true
             }
           },
           "corruptedRequest": {
             "blockLevels": {
               "deprecated": false,
-              "elementType": "im.turms.server.common.infra.property.env.common.security.AutoBlockItemProperties$BlockLevel",
+              "elementType": "im.turms.server.common.infra.property.env.common.security.AutoBlockItemProperties$BlockLevelProperties",
               "global": false,
               "mutable": false,
               "sensitive": false,
               "type": "java.util.List",
               "value": [
                 {
-                  "blockDurationSeconds": 600,
-                  "goNextLevelTriggerTimes": 1,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 600000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 5
                 },
                 {
-                  "blockDurationSeconds": 1800,
-                  "goNextLevelTriggerTimes": 1,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 1800000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 1
                 },
                 {
-                  "blockDurationSeconds": 3600,
-                  "goNextLevelTriggerTimes": 0,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 3600000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 1
                 }
               ]
-            },
-            "blockTriggerTimes": {
-              "deprecated": false,
-              "description": "Block the client when the block condition is triggered the times",
-              "global": false,
-              "mutable": false,
-              "sensitive": false,
-              "type": "int",
-              "value": 5
             },
             "enabled": {
               "deprecated": false,
@@ -2467,43 +2742,34 @@
               "mutable": false,
               "sensitive": false,
               "type": "boolean",
-              "value": false
+              "value": true
             }
           },
           "frequentRequest": {
             "blockLevels": {
               "deprecated": false,
-              "elementType": "im.turms.server.common.infra.property.env.common.security.AutoBlockItemProperties$BlockLevel",
+              "elementType": "im.turms.server.common.infra.property.env.common.security.AutoBlockItemProperties$BlockLevelProperties",
               "global": false,
               "mutable": false,
               "sensitive": false,
               "type": "java.util.List",
               "value": [
                 {
-                  "blockDurationSeconds": 600,
-                  "goNextLevelTriggerTimes": 1,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 600000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 5
                 },
                 {
-                  "blockDurationSeconds": 1800,
-                  "goNextLevelTriggerTimes": 1,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 1800000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 1
                 },
                 {
-                  "blockDurationSeconds": 3600,
-                  "goNextLevelTriggerTimes": 0,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 3600000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 1
                 }
               ]
-            },
-            "blockTriggerTimes": {
-              "deprecated": false,
-              "description": "Block the client when the block condition is triggered the times",
-              "global": false,
-              "mutable": false,
-              "sensitive": false,
-              "type": "int",
-              "value": 5
             },
             "enabled": {
               "deprecated": false,
@@ -2511,7 +2777,7 @@
               "mutable": false,
               "sensitive": false,
               "type": "boolean",
-              "value": false
+              "value": true
             }
           }
         },
@@ -2537,37 +2803,28 @@
           "corruptedFrame": {
             "blockLevels": {
               "deprecated": false,
-              "elementType": "im.turms.server.common.infra.property.env.common.security.AutoBlockItemProperties$BlockLevel",
+              "elementType": "im.turms.server.common.infra.property.env.common.security.AutoBlockItemProperties$BlockLevelProperties",
               "global": false,
               "mutable": false,
               "sensitive": false,
               "type": "java.util.List",
               "value": [
                 {
-                  "blockDurationSeconds": 600,
-                  "goNextLevelTriggerTimes": 1,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 600000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 5
                 },
                 {
-                  "blockDurationSeconds": 1800,
-                  "goNextLevelTriggerTimes": 1,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 1800000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 1
                 },
                 {
-                  "blockDurationSeconds": 3600,
-                  "goNextLevelTriggerTimes": 0,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 3600000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 1
                 }
               ]
-            },
-            "blockTriggerTimes": {
-              "deprecated": false,
-              "description": "Block the client when the block condition is triggered the times",
-              "global": false,
-              "mutable": false,
-              "sensitive": false,
-              "type": "int",
-              "value": 5
             },
             "enabled": {
               "deprecated": false,
@@ -2575,43 +2832,34 @@
               "mutable": false,
               "sensitive": false,
               "type": "boolean",
-              "value": false
+              "value": true
             }
           },
           "corruptedRequest": {
             "blockLevels": {
               "deprecated": false,
-              "elementType": "im.turms.server.common.infra.property.env.common.security.AutoBlockItemProperties$BlockLevel",
+              "elementType": "im.turms.server.common.infra.property.env.common.security.AutoBlockItemProperties$BlockLevelProperties",
               "global": false,
               "mutable": false,
               "sensitive": false,
               "type": "java.util.List",
               "value": [
                 {
-                  "blockDurationSeconds": 600,
-                  "goNextLevelTriggerTimes": 1,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 600000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 5
                 },
                 {
-                  "blockDurationSeconds": 1800,
-                  "goNextLevelTriggerTimes": 1,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 1800000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 1
                 },
                 {
-                  "blockDurationSeconds": 3600,
-                  "goNextLevelTriggerTimes": 0,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 3600000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 1
                 }
               ]
-            },
-            "blockTriggerTimes": {
-              "deprecated": false,
-              "description": "Block the client when the block condition is triggered the times",
-              "global": false,
-              "mutable": false,
-              "sensitive": false,
-              "type": "int",
-              "value": 5
             },
             "enabled": {
               "deprecated": false,
@@ -2619,43 +2867,34 @@
               "mutable": false,
               "sensitive": false,
               "type": "boolean",
-              "value": false
+              "value": true
             }
           },
           "frequentRequest": {
             "blockLevels": {
               "deprecated": false,
-              "elementType": "im.turms.server.common.infra.property.env.common.security.AutoBlockItemProperties$BlockLevel",
+              "elementType": "im.turms.server.common.infra.property.env.common.security.AutoBlockItemProperties$BlockLevelProperties",
               "global": false,
               "mutable": false,
               "sensitive": false,
               "type": "java.util.List",
               "value": [
                 {
-                  "blockDurationSeconds": 600,
-                  "goNextLevelTriggerTimes": 1,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 600000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 5
                 },
                 {
-                  "blockDurationSeconds": 1800,
-                  "goNextLevelTriggerTimes": 1,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 1800000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 1
                 },
                 {
-                  "blockDurationSeconds": 3600,
-                  "goNextLevelTriggerTimes": 0,
-                  "reduceOneTriggerTimeIntervalMillis": 60000
+                  "blockDurationMillis": 3600000,
+                  "reduceOneTriggerTimeIntervalMillis": 60000,
+                  "triggerTimesThreshold": 1
                 }
               ]
-            },
-            "blockTriggerTimes": {
-              "deprecated": false,
-              "description": "Block the client when the block condition is triggered the times",
-              "global": false,
-              "mutable": false,
-              "sensitive": false,
-              "type": "int",
-              "value": 5
             },
             "enabled": {
               "deprecated": false,
@@ -2663,7 +2902,7 @@
               "mutable": false,
               "sensitive": false,
               "type": "boolean",
-              "value": false
+              "value": true
             }
           }
         },
@@ -2771,6 +3010,17 @@
         "type": "boolean",
         "value": false
       },
+      "debug": {
+        "enabled": {
+          "deprecated": false,
+          "description": "Whether to enable debug APIs",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean",
+          "value": false
+        }
+      },
       "defaultAvailableRecordsPerRequest": {
         "deprecated": false,
         "description": "The default available records per query request",
@@ -2790,16 +3040,36 @@
         "value": true
       },
       "http": {
+        "connectTimeoutMillis": {
+          "deprecated": false,
+          "description": "The connect timeout",
+          "global": false,
+          "mutable": false,
+          "sensitive": false,
+          "type": "int",
+          "value": 30000
+        },
         "host": {
           "deprecated": false,
+          "description": "The bind host",
           "global": false,
           "mutable": false,
           "sensitive": false,
           "type": "string",
           "value": "0.0.0.0"
         },
+        "idleTimeoutMillis": {
+          "deprecated": false,
+          "description": "The idle timeout on the connection when it is waiting for an HTTP request to come. Once the timeout is reached, the connection will be closed",
+          "global": false,
+          "mutable": false,
+          "sensitive": false,
+          "type": "int",
+          "value": 180000
+        },
         "maxRequestBodySizeBytes": {
           "deprecated": false,
+          "description": "The max request body size in bytes",
           "global": false,
           "mutable": false,
           "sensitive": false,
@@ -2808,11 +3078,21 @@
         },
         "port": {
           "deprecated": false,
+          "description": "The bind port",
           "global": false,
           "mutable": false,
           "sensitive": false,
           "type": "int",
           "value": 8510
+        },
+        "requestReadTimeoutMillis": {
+          "deprecated": false,
+          "description": "The read timeout on the connection when it is waiting for an HTTP request to be fully read. Once the timeout is reached, the connection will be closed",
+          "global": false,
+          "mutable": false,
+          "sensitive": false,
+          "type": "int",
+          "value": 180000
         }
       },
       "log": {
@@ -3015,6 +3295,8 @@
           "DELETE_CONVERSATION_SETTINGS_REQUEST",
           "QUERY_CONVERSATION_SETTINGS_REQUEST",
           "UPDATE_CONVERSATION_SETTINGS_REQUEST",
+          "CREATE_MESSAGE_REACTIONS_REQUEST",
+          "DELETE_MESSAGE_REACTIONS_REQUEST",
           "KIND_NOT_SET"
         ],
         "sensitive": false,
@@ -3126,6 +3408,8 @@
             "DELETE_CONVERSATION_SETTINGS_REQUEST",
             "QUERY_CONVERSATION_SETTINGS_REQUEST",
             "UPDATE_CONVERSATION_SETTINGS_REQUEST",
+            "CREATE_MESSAGE_REACTIONS_REQUEST",
+            "DELETE_MESSAGE_REACTIONS_REQUEST",
             "KIND_NOT_SET"
           ],
           "sensitive": false,
@@ -3236,6 +3520,8 @@
             "DELETE_CONVERSATION_SETTINGS_REQUEST",
             "QUERY_CONVERSATION_SETTINGS_REQUEST",
             "UPDATE_CONVERSATION_SETTINGS_REQUEST",
+            "CREATE_MESSAGE_REACTIONS_REQUEST",
+            "DELETE_MESSAGE_REACTIONS_REQUEST",
             "KIND_NOT_SET"
           ],
           "sensitive": false,
@@ -3430,16 +3716,6 @@
       }
     },
     "conversation": {
-      "allowedSettings": {
-        "deprecated": false,
-        "description": "The list of allowed conversation settings",
-        "elementType": "im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingProperties",
-        "global": true,
-        "mutable": true,
-        "sensitive": false,
-        "type": "java.util.List",
-        "value": []
-      },
       "readReceipt": {
         "allowMoveReadDateForward": {
           "deprecated": false,
@@ -3485,6 +3761,36 @@
           "sensitive": false,
           "type": "boolean",
           "value": true
+        }
+      },
+      "settings": {
+        "allowedSettings": {
+          "deprecated": false,
+          "description": "The list of allowed settings",
+          "elementType": "im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingProperties",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "java.util.List",
+          "value": []
+        },
+        "ignoreUnknownSettingsOnDelete": {
+          "deprecated": false,
+          "description": "Whether to ignore unknown settings on delete. If false, the server will throw if the request specifies an unknown setting. If true, the server will ignore the unknown settings, and continue to process the request",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean",
+          "value": false
+        },
+        "ignoreUnknownSettingsOnUpsert": {
+          "deprecated": false,
+          "description": "Whether to ignore unknown settings on upsert. If false, the server will throw if the request specifies an unknown setting. If true, the server will ignore the unknown settings, and continue to process the request",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean",
+          "value": false
         }
       },
       "typingStatus": {
@@ -3773,6 +4079,29 @@
         "sensitive": false,
         "type": "boolean",
         "value": true
+      },
+      "info": {
+        "userDefinedAttributes": {
+          "allowedAttributes": {
+            "deprecated": false,
+            "description": "The list of allowed attributes",
+            "elementType": "im.turms.server.common.infra.property.env.service.business.common.userdefinedattribute.UserDefinedAttributeProperties",
+            "global": true,
+            "mutable": true,
+            "sensitive": false,
+            "type": "java.util.List",
+            "value": []
+          },
+          "ignoreUnknownAttributesOnUpsert": {
+            "deprecated": false,
+            "description": "Whether to ignore unknown attributes on upsert. If false, the server will throw if the request specifies an unknown attribute. If true, the server will ignore the unknown attributes, and continue to process the request",
+            "global": true,
+            "mutable": true,
+            "sensitive": false,
+            "type": "boolean",
+            "value": false
+          }
+        }
       },
       "invitation": {
         "allowRecallPendingInvitationByOwnerAndManager": {
@@ -4190,7 +4519,7 @@
               "type": "boolean",
               "value": false
             },
-            "roleId": {
+            "roleIds": {
               "deprecated": false,
               "global": false,
               "mutable": false,
@@ -4408,6 +4737,14 @@
               "sensitive": false,
               "type": "boolean",
               "value": true
+            },
+            "senderIpV6": {
+              "deprecated": false,
+              "global": false,
+              "mutable": false,
+              "sensitive": false,
+              "type": "boolean",
+              "value": true
             }
           }
         },
@@ -4446,20 +4783,6 @@
             "sensitive": false,
             "type": "java.util.LinkedHashMap",
             "value": {
-              "cold": {
-                "days": 270,
-                "enabled": true,
-                "shards": [
-                  ""
-                ]
-              },
-              "frozen": {
-                "days": 0,
-                "enabled": true,
-                "shards": [
-                  ""
-                ]
-              },
               "hot": {
                 "days": 30,
                 "enabled": true,
@@ -4469,6 +4792,20 @@
               },
               "warm": {
                 "days": 60,
+                "enabled": true,
+                "shards": [
+                  ""
+                ]
+              },
+              "cold": {
+                "days": 270,
+                "enabled": true,
+                "shards": [
+                  ""
+                ]
+              },
+              "frozen": {
+                "days": 0,
                 "enabled": true,
                 "shards": [
                   ""
@@ -5093,7 +5430,7 @@
           "mutable": true,
           "sensitive": false,
           "type": "boolean",
-          "value": false
+          "value": true
         },
         "notifyRequesterOtherOnlineSessions": {
           "deprecated": false,
@@ -5102,7 +5439,7 @@
           "mutable": true,
           "sensitive": false,
           "type": "boolean",
-          "value": false
+          "value": true
         }
       },
       "meetingUpdated": {
@@ -5673,16 +6010,6 @@
         "type": "boolean",
         "value": true
       },
-      "allowedSettings": {
-        "deprecated": false,
-        "description": "The list of allowed user settings",
-        "elementType": "im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingProperties",
-        "global": true,
-        "mutable": true,
-        "sensitive": false,
-        "type": "java.util.List",
-        "value": []
-      },
       "deleteTwoSidedRelationships": {
         "deprecated": false,
         "description": "Whether to delete the two-sided relationships when a user requests to delete a relationship",
@@ -5766,50 +6093,73 @@
           "value": 200
         }
       },
-      "maxIntroLength": {
-        "deprecated": false,
-        "description": "The maximum allowed length for a user's intro",
-        "global": true,
-        "mutable": true,
-        "sensitive": false,
-        "type": "int",
-        "value": 100
-      },
-      "maxNameLength": {
-        "deprecated": false,
-        "description": "The maximum allowed length for a user's name",
-        "global": true,
-        "mutable": true,
-        "sensitive": false,
-        "type": "int",
-        "value": 20
-      },
-      "maxPasswordLength": {
-        "deprecated": false,
-        "description": "The maximum allowed length for a user's password",
-        "global": true,
-        "mutable": true,
-        "sensitive": false,
-        "type": "int",
-        "value": 16
-      },
-      "maxProfilePictureLength": {
-        "deprecated": false,
-        "description": "The maximum allowed length for a user's profile picture",
-        "global": true,
-        "mutable": true,
-        "sensitive": false,
-        "type": "int",
-        "value": 100
-      },
-      "minPasswordLength": {
-        "deprecated": false,
-        "description": "The minimum allowed length for a user's password. If 0, it means the password can be an empty string \"\". If -1, it means the password can be null",
-        "global": true,
-        "mutable": true,
-        "sensitive": false,
-        "type": "int",
-        "value": -1
+      "info": {
+        "maxIntroLength": {
+          "deprecated": false,
+          "description": "The maximum allowed length for a user's intro",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int",
+          "value": 100
+        },
+        "maxNameLength": {
+          "deprecated": false,
+          "description": "The maximum allowed length for a user's name",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int",
+          "value": 20
+        },
+        "maxPasswordLength": {
+          "deprecated": false,
+          "description": "The maximum allowed length for a user's password",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int",
+          "value": 16
+        },
+        "maxProfilePictureLength": {
+          "deprecated": false,
+          "description": "The maximum allowed length for a user's profile picture",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int",
+          "value": 100
+        },
+        "minPasswordLength": {
+          "deprecated": false,
+          "description": "The minimum allowed length for a user's password. If 0, it means the password can be an empty string \"\". If -1, it means the password can be null",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "int",
+          "value": -1
+        },
+        "userDefinedAttributes": {
+          "allowedAttributes": {
+            "deprecated": false,
+            "description": "The list of allowed attributes",
+            "elementType": "im.turms.server.common.infra.property.env.service.business.common.userdefinedattribute.UserDefinedAttributeProperties",
+            "global": true,
+            "mutable": true,
+            "sensitive": false,
+            "type": "java.util.List",
+            "value": []
+          },
+          "ignoreUnknownAttributesOnUpsert": {
+            "deprecated": false,
+            "description": "Whether to ignore unknown attributes on upsert. If false, the server will throw if the request specifies an unknown attribute. If true, the server will ignore the unknown attributes, and continue to process the request",
+            "global": true,
+            "mutable": true,
+            "sensitive": false,
+            "type": "boolean",
+            "value": false
+          }
+        }
       },
       "respondOfflineIfInvisible": {
         "deprecated": false,
@@ -5819,18 +6169,57 @@
         "sensitive": false,
         "type": "boolean",
         "value": false
+      },
+      "settings": {
+        "allowedSettings": {
+          "deprecated": false,
+          "description": "The list of allowed settings",
+          "elementType": "im.turms.server.common.infra.property.env.service.business.common.setting.CustomSettingProperties",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "java.util.List",
+          "value": []
+        },
+        "ignoreUnknownSettingsOnDelete": {
+          "deprecated": false,
+          "description": "Whether to ignore unknown settings on delete. If false, the server will throw if the request specifies an unknown setting. If true, the server will ignore the unknown settings, and continue to process the request",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean",
+          "value": false
+        },
+        "ignoreUnknownSettingsOnUpsert": {
+          "deprecated": false,
+          "description": "Whether to ignore unknown settings on upsert. If false, the server will throw if the request specifies an unknown setting. If true, the server will ignore the unknown settings, and continue to process the request",
+          "global": true,
+          "mutable": true,
+          "sensitive": false,
+          "type": "boolean",
+          "value": false
+        }
       }
     }
   },
   "shutdown": {
-    "jobTimeoutMillis": {
+    "jobForcedTimeoutMillis": {
       "deprecated": false,
-      "description": "Wait for a job 2 minutes at most for extreme cases by default. Though it is a long time, graceful shutdown is usually better than force shutdown.",
+      "description": "The forced shutdown timeout in milliseconds. After the timeout, the job will be forced to be shutdown immediately no matter whether it is running or not. If this value is equal to or less than \"jobGracefulTimeoutMillis\", the job will be forced to be shutdown when reaching \"jobGracefulTimeoutMillis\"",
       "global": false,
       "mutable": false,
       "sensitive": false,
       "type": "long",
-      "value": 120000
+      "value": 90000
+    },
+    "jobGracefulTimeoutMillis": {
+      "deprecated": false,
+      "description": "The graceful shutdown timeout in milliseconds. After the timeout, the job will try to shut down gracefully in a more aggressive way before being forced to be shutdown when reaching \"jobForcedTimeoutMillis\"",
+      "global": false,
+      "mutable": false,
+      "sensitive": false,
+      "type": "long",
+      "value": 60000
     }
   },
   "userStatus": {

@@ -1,13 +1,13 @@
 #include "turms/client/model/notification_util.h"
 
-namespace turms {
-namespace client {
-namespace model {
-auto notification::isSuccess(const notification::TurmsNotification& notification) -> bool {
+#include "turms/client/model/response_status_code.h"
+
+namespace turms::client::model {
+auto notification::isSuccess(const TurmsNotification& notification) -> bool {
     return notification.has_code() && ResponseStatusCode::isSuccessCode(notification.code());
 }
 
-auto notification::isError(const notification::TurmsNotification& notification) -> bool {
+auto notification::isError(const TurmsNotification& notification) -> bool {
     return notification.has_code() && ResponseStatusCode::isErrorCode(notification.code());
 }
 
@@ -18,6 +18,4 @@ auto notification::getLongOrThrow(const proto::TurmsNotification::Data& data) ->
     }
     return data.long_();
 }
-}  // namespace model
-}  // namespace client
-}  // namespace turms
+}  // namespace turms::client::model

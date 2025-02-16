@@ -50,7 +50,7 @@ import im.turms.server.common.infra.property.TurmsPropertiesManager;
 import im.turms.server.common.infra.property.env.service.business.group.GroupJoinRequestProperties;
 import im.turms.server.common.infra.task.TaskManager;
 import im.turms.server.common.infra.time.DateRange;
-import im.turms.server.common.infra.time.DateUtil;
+import im.turms.server.common.infra.time.DateTimeUtil;
 import im.turms.server.common.infra.validation.ValidRequestStatus;
 import im.turms.server.common.infra.validation.ValidResponseAction;
 import im.turms.server.common.infra.validation.Validator;
@@ -177,9 +177,9 @@ public class GroupJoinRequestService extends ExpirableEntityService<GroupJoinReq
         }
         return groupMemberService.isGroupMember(groupId, requesterId, false)
                 .flatMap(isGroupMember -> isGroupMember
-                        ? groupBlocklistService.isBlocked(groupId, requesterId)
-                        : Mono.error(ResponseException
-                                .get(ResponseStatusCode.GROUP_MEMBER_SEND_GROUP_JOIN_REQUEST)))
+                        ? Mono.error(ResponseException
+                                .get(ResponseStatusCode.GROUP_MEMBER_SEND_GROUP_JOIN_REQUEST))
+                        : groupBlocklistService.isBlocked(groupId, requesterId))
                 .flatMap(isBlocked -> isBlocked
                         ? Mono.error(ResponseException
                                 .get(ResponseStatusCode.BLOCKED_USER_SEND_GROUP_JOIN_REQUEST))
@@ -338,7 +338,7 @@ public class GroupJoinRequestService extends ExpirableEntityService<GroupJoinReq
                         })
                 : userVersionService.queryGroupJoinRequestsVersion(requesterId);
         return versionMono.flatMap(version -> {
-            if (DateUtil.isAfterOrSame(lastUpdatedDate, version)) {
+            if (DateTimeUtil.isAfterOrSame(lastUpdatedDate, version)) {
                 return ResponseExceptionPublisherPool.alreadyUpToUpdate();
             }
             Flux<GroupJoinRequest> requestFlux = searchRequestsByGroupId
@@ -495,7 +495,7 @@ public class GroupJoinRequestService extends ExpirableEntityService<GroupJoinReq
                                                 session)
                                                 .then(groupMemberService
                                                         .addGroupMember(joinRequest.getGroupId(),
-                                                                requesterId,
+                                                                joinRequest.getRequesterId(),
                                                                 GroupMemberRole.MEMBER,
                                                                 null,
                                                                 null,

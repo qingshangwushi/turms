@@ -176,4 +176,51 @@ public interface GroupMemberOrBuilder extends
      * @return The enum numeric value on the wire of usingDeviceTypes at the given index.
      */
     int getUsingDeviceTypesValue(int index);
+
+    /**
+     * <code>optional string note = 9;</code>
+     *
+     * @return Whether the note field is set.
+     */
+    boolean hasNote();
+
+    /**
+     * <code>optional string note = 9;</code>
+     *
+     * @return The note.
+     */
+    java.lang.String getNote();
+
+    /**
+     * <code>optional string note = 9;</code>
+     *
+     * @return The bytes for note.
+     */
+    com.google.protobuf.ByteString getNoteBytes();
+
+    /**
+     * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+     */
+    java.util.List<im.turms.server.common.access.client.dto.model.common.Value> getCustomAttributesList();
+
+    /**
+     * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+     */
+    im.turms.server.common.access.client.dto.model.common.Value getCustomAttributes(int index);
+
+    /**
+     * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+     */
+    int getCustomAttributesCount();
+
+    /**
+     * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+     */
+    java.util.List<? extends im.turms.server.common.access.client.dto.model.common.ValueOrBuilder> getCustomAttributesOrBuilderList();
+
+    /**
+     * <code>repeated .im.turms.proto.Value custom_attributes = 15;</code>
+     */
+    im.turms.server.common.access.client.dto.model.common.ValueOrBuilder getCustomAttributesOrBuilder(
+            int index);
 }

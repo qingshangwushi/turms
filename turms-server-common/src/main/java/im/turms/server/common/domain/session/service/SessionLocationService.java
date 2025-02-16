@@ -32,6 +32,7 @@ import reactor.core.publisher.Mono;
 
 import im.turms.server.common.access.client.dto.constant.DeviceType;
 import im.turms.server.common.access.common.ResponseStatusCode;
+import im.turms.server.common.domain.common.service.BaseService;
 import im.turms.server.common.domain.common.util.DeviceTypeUtil;
 import im.turms.server.common.domain.location.bo.Location;
 import im.turms.server.common.domain.session.bo.UserSessionId;
@@ -42,7 +43,7 @@ import im.turms.server.common.infra.property.env.common.location.LocationPropert
 import im.turms.server.common.infra.property.env.common.location.NearbyUserRequestProperties;
 import im.turms.server.common.infra.validation.ValidDeviceType;
 import im.turms.server.common.infra.validation.Validator;
-import im.turms.server.common.storage.redis.RedisEntryId;
+import im.turms.server.common.storage.redis.RedisEntryIdConst;
 import im.turms.server.common.storage.redis.TurmsRedisClientManager;
 
 /**
@@ -50,7 +51,7 @@ import im.turms.server.common.storage.redis.TurmsRedisClientManager;
  */
 @ConditionalOnBean(name = "locationRedisClientManager")
 @Service
-public class SessionLocationService {
+public class SessionLocationService extends BaseService {
 
     private final TurmsRedisClientManager locationRedisClientManager;
 
@@ -127,7 +128,7 @@ public class SessionLocationService {
                 ? new UserSessionId(userId, deviceType)
                 : userId;
         return locationRedisClientManager
-                .geoadd(userId, RedisEntryId.LOCATION_BUFFER, longitude, latitude, member)
+                .geoadd(userId, RedisEntryIdConst.KEY_LOCATION_BUFFER, longitude, latitude, member)
                 .then();
     }
 
@@ -148,7 +149,8 @@ public class SessionLocationService {
         Object member = treatUserIdAndDeviceTypeAsUniqueUser
                 ? new UserSessionId(userId, deviceType)
                 : userId;
-        return locationRedisClientManager.georem(userId, RedisEntryId.LOCATION_BUFFER, member)
+        return locationRedisClientManager
+                .georem(userId, RedisEntryIdConst.KEY_LOCATION_BUFFER, member)
                 .then();
     }
 
@@ -193,7 +195,7 @@ public class SessionLocationService {
         }
         Flux<GeoWithin<Object>> georadiusbymember =
                 locationRedisClientManager.georadiusbymember(userId,
-                        RedisEntryId.LOCATION_BUFFER,
+                        RedisEntryIdConst.KEY_LOCATION_BUFFER,
                         currentUserSessionId,
                         maxDistance,
                         geoArgs);
@@ -218,7 +220,8 @@ public class SessionLocationService {
         Object member = treatUserIdAndDeviceTypeAsUniqueUser
                 ? new UserSessionId(userId, deviceType)
                 : userId;
-        return locationRedisClientManager.geopos(userId, RedisEntryId.LOCATION_BUFFER, member)
+        return locationRedisClientManager
+                .geopos(userId, RedisEntryIdConst.KEY_LOCATION_BUFFER, member)
                 .singleOrEmpty();
     }
 

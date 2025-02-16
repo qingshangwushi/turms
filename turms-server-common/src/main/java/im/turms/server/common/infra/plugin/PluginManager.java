@@ -22,14 +22,16 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchEvent;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -42,7 +44,6 @@ import lombok.Getter;
 import org.graalvm.polyglot.Engine;
 import org.graalvm.polyglot.SandboxPolicy;
 import org.jctools.maps.NonBlockingIdentityHashMap;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.event.ContextRefreshedEvent;
@@ -53,12 +54,14 @@ import reactor.netty.resources.ConnectionProvider;
 import reactor.netty.transport.ProxyProvider;
 
 import im.turms.server.common.access.admin.web.MultipartFile;
+import im.turms.server.common.infra.application.JobShutdownOrder;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
+import im.turms.server.common.infra.cluster.node.Node;
 import im.turms.server.common.infra.cluster.node.NodeType;
 import im.turms.server.common.infra.codec.Base16Util;
 import im.turms.server.common.infra.collection.CollectionUtil;
-import im.turms.server.common.infra.context.JobShutdownOrder;
-import im.turms.server.common.infra.context.TurmsApplicationContext;
 import im.turms.server.common.infra.exception.FeatureDisabledException;
+import im.turms.server.common.infra.io.FileChangeEvent;
 import im.turms.server.common.infra.io.FileUtil;
 import im.turms.server.common.infra.io.InputOutputException;
 import im.turms.server.common.infra.lang.ClassUtil;
@@ -70,7 +73,9 @@ import im.turms.server.common.infra.plugin.invoker.FirstExtensionPointInvoker;
 import im.turms.server.common.infra.plugin.invoker.SequentialExtensionPointInvoker;
 import im.turms.server.common.infra.plugin.invoker.SimultaneousExtensionPointInvoker;
 import im.turms.server.common.infra.property.TurmsPropertiesManager;
+import im.turms.server.common.infra.property.constant.DuplicateClassLoadStrategy;
 import im.turms.server.common.infra.property.constant.PluginType;
+import im.turms.server.common.infra.property.env.common.plugin.JavaPluginProperties;
 import im.turms.server.common.infra.property.env.common.plugin.JsPluginDebugProperties;
 import im.turms.server.common.infra.property.env.common.plugin.JsPluginProperties;
 import im.turms.server.common.infra.property.env.common.plugin.NetworkPluginProperties;
@@ -94,9 +99,10 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
     private final Path pluginDir;
 
     private final boolean allowSaveJavaPlugins;
+    private final DuplicateClassLoadStrategy duplicateClassLoadStrategy;
 
     private final boolean allowSaveJsPlugins;
-    private final boolean isJsScriptEnabled;
+    private final boolean isJsEnabled;
     private final boolean isJsDebugEnabled;
     private final String jsInspectHost;
     private final int jsInspectPort;
@@ -112,32 +118,45 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
     private final Object engine;
     private final Object sandboxPolicy;
 
-    private final Map<Class<? extends ExtensionPoint>, List<ExtensionPointEventListener>> extensionPointClassToEventListener =
+    private final Map<Class<? extends ExtensionPoint>, List<ExtensionPointEventListener<?>>> extensionPointClassToEventListener =
             new NonBlockingIdentityHashMap<>();
 
     public PluginManager(
-            NodeType nodeType,
+            Node node,
             ApplicationContext context,
             TurmsApplicationContext applicationContext,
-            TurmsPropertiesManager propertiesManager,
-            @Autowired(
-                    required = false) Set<Class<? extends ExtensionPoint>> singletonExtensionPoints) {
-        this.nodeType = nodeType;
+            TurmsPropertiesManager propertiesManager) {
+        this.nodeType = node.getNodeType();
         this.context = context;
         PluginProperties pluginProperties = propertiesManager.getLocalProperties()
                 .getPlugin();
         enabled = pluginProperties.isEnabled();
-        pluginRepository = new PluginRepository(
-                singletonExtensionPoints == null
-                        ? Collections.emptySet()
-                        : singletonExtensionPoints);
-        pluginDir = getPluginDir(applicationContext.getHome(), pluginProperties.getDir());
-        isJsScriptEnabled = ClassUtil.exists("org.graalvm.polyglot.Engine");
-        PluginFinder.FindResult findResult = PluginFinder.find(pluginDir, isJsScriptEnabled);
-        loadJavaPlugins(findResult.zipFiles());
-        allowSaveJavaPlugins = pluginProperties.getJava()
-                .isAllowSave();
-        if (isJsScriptEnabled) {
+        pluginRepository = new PluginRepository();
+        pluginDir = ensurePluginDirExists(applicationContext.getHome(), pluginProperties.getDir());
+
+        JavaPluginProperties javaPluginProperties = pluginProperties.getJava();
+        allowSaveJavaPlugins = javaPluginProperties.isAllowSave();
+        duplicateClassLoadStrategy = javaPluginProperties.getDuplicateClassLoadStrategy();
+
+        isJsEnabled = ClassUtil.exists("org.graalvm.polyglot.Engine");
+        PluginFinder.FindResult findResult = PluginFinder.find(pluginDir, isJsEnabled);
+        List<ZipFile> zipFiles = findResult.zipFiles();
+        try {
+            loadJavaPlugins(zipFiles);
+        } catch (Exception e) {
+            RuntimeException exception = new RuntimeException("Failed to load Java plugins", e);
+            for (ZipFile zipFile : zipFiles) {
+                try {
+                    zipFile.close();
+                } catch (IOException ex) {
+                    exception.addSuppressed(new InputOutputException(
+                            "Caught an error while closing the zip file",
+                            ex));
+                }
+            }
+            throw exception;
+        }
+        if (isJsEnabled) {
             JsPluginProperties jsPluginProperties = pluginProperties.getJs();
             JsPluginDebugProperties debugProperties = jsPluginProperties.getDebug();
             allowSaveJsPlugins = jsPluginProperties.isAllowSave();
@@ -163,6 +182,16 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
             sandboxPolicy = null;
         }
         loadNetworkPlugins(pluginProperties.getNetwork());
+        if (pluginProperties.isWatchDir()) {
+            FileUtil.watchDir(pluginDir)
+                    .subscribe(fileChangeEvent -> {
+                        try {
+                            handleFileChangeEvent(fileChangeEvent);
+                        } catch (Exception e) {
+                            LOGGER.error("Caught an error while handling file change event", e);
+                        }
+                    });
+        }
         applicationContext.addShutdownHook(JobShutdownOrder.CLOSE_PLUGINS,
                 timeoutMillis -> destroy());
     }
@@ -177,11 +206,6 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
             startPlugins().timeout(Duration.ofMinutes(10))
                     .subscribe(null, LOGGER::error, () -> LOGGER.info("All plugins are started"));
         }
-    }
-
-    private Path getPluginDir(Path home, String pluginsDir) {
-        return home.resolve(pluginsDir)
-                .toAbsolutePath();
     }
 
     private Mono<Void> destroy() {
@@ -210,6 +234,56 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
                 });
     }
 
+    private void handleFileChangeEvent(FileChangeEvent fileChangeEvent) {
+        WatchEvent.Kind<Path> kind = fileChangeEvent.kind();
+        Path path = fileChangeEvent.absPath();
+        if (kind == StandardWatchEventKinds.ENTRY_CREATE) {
+            Object file = PluginFinder.find(isJsEnabled, path);
+            if (file != null) {
+                if (file instanceof ZipFile zipFile) {
+                    loadJavaPluginOrCloseFile(zipFile);
+                } else if (file instanceof JsFile jsFile) {
+                    loadJsPlugin(jsFile.script(), jsFile.path());
+                }
+            }
+        } else if (kind == StandardWatchEventKinds.ENTRY_DELETE) {
+            pluginRepository.removePlugins(path);
+        } else if (kind == StandardWatchEventKinds.ENTRY_MODIFY) {
+            pluginRepository.removePlugins(path);
+            Object file = PluginFinder.find(isJsEnabled, path);
+            if (file != null) {
+                if (file instanceof ZipFile zipFile) {
+                    loadJavaPluginOrCloseFile(zipFile);
+                } else if (file instanceof JsFile jsFile) {
+                    loadJsPlugin(jsFile.script(), jsFile.path());
+                }
+            }
+        }
+    }
+
+    private Path ensurePluginDirExists(Path home, String pluginDir) {
+        Path path = home.resolve(pluginDir)
+                .toAbsolutePath();
+        if (Files.isDirectory(path)) {
+            return path;
+        }
+        try {
+            Files.createDirectories(path);
+        } catch (FileAlreadyExistsException e) {
+            throw new RuntimeException(
+                    "The path ("
+                            + path
+                            + ") of the plugin directory points to an existing file",
+                    e);
+        } catch (IOException e) {
+            throw new RuntimeException(
+                    "Failed to create the plugin directory: "
+                            + path,
+                    e);
+        }
+        return path;
+    }
+
     private void initAndRegisterPlugin(Plugin plugin) {
         plugin.onExtensionStarted(this::notifyExtensionPointEventListeners);
         pluginRepository.register(plugin);
@@ -227,7 +301,7 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
             client = client.proxy(spec -> {
                 String host = proxy.getHost();
                 if (StringUtil.isBlank(host)) {
-                    throw new IllegalArgumentException("The host cannot be blank");
+                    throw new IllegalArgumentException("The host must not be blank");
                 }
                 ProxyProvider.Builder builder = spec.type(ProxyProvider.Proxy.HTTP)
                         .host(host)
@@ -264,7 +338,8 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
         } catch (Exception e) {
             return Mono.error(new IllegalArgumentException(
                     "Invalid plugin URL: "
-                            + url));
+                            + url,
+                    e));
         }
         String fileName = Paths.get(uri.getPath())
                 .getFileName()
@@ -325,7 +400,7 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
                         if (!allowSaveJavaPlugins) {
                             file.deleteOnExit();
                         }
-                    } else if (isJsScriptEnabled && !allowSaveJsPlugins) {
+                    } else if (isJsEnabled && !allowSaveJsPlugins) {
                         file.deleteOnExit();
                     }
                     try {
@@ -347,9 +422,9 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
                                             + path,
                                     e);
                         }
-                        loadJavaPlugin(zipFile);
+                        loadJavaPluginOrCloseFile(zipFile);
                     } else {
-                        if (isJsScriptEnabled) {
+                        if (isJsEnabled) {
                             String script = ByteBufUtil.readString(buffer);
                             loadJsPlugin(script, path);
                         }
@@ -418,22 +493,37 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
                                 + fileName,
                         e);
             }
-            JavaPluginDescriptor descriptor = JavaPluginDescriptorFactory.load(zipFile);
-            if (descriptor == null) {
-                throw new MalformedPluginArchiveException(
-                        "Could not load a Java plugin from the file ("
-                                + fileName
-                                + ") because it is not a Java plugin JAR file");
+            try {
+                JavaPluginDescriptor descriptor = JavaPluginDescriptorFactory.load(zipFile);
+                if (descriptor == null) {
+                    throw new MalformedPluginArchiveException(
+                            "Could not load a Java plugin from the file ("
+                                    + fileName
+                                    + ") because it is not a Java plugin JAR file");
+                }
+                Plugin plugin = JavaPluginFactory
+                        .create(descriptor, zipFile, duplicateClassLoadStrategy, nodeType, context);
+                initAndRegisterPlugin(plugin);
+            } catch (Exception e) {
+                try {
+                    zipFile.close();
+                } catch (IOException closeException) {
+                    e.addSuppressed(
+                            new RuntimeException("Caught an error while closing the zip file", e));
+                }
+                throw e;
             }
-            Plugin plugin = JavaPluginFactory.create(descriptor, nodeType, context);
-            initAndRegisterPlugin(plugin);
         }
     }
 
     private void loadJavaPlugins(List<ZipFile> zipFiles) {
-        List<JavaPluginDescriptor> descriptors = JavaPluginDescriptorFactory.load(zipFiles);
-        for (JavaPluginDescriptor descriptor : descriptors) {
-            Plugin plugin = JavaPluginFactory.create(descriptor, nodeType, context);
+        for (ZipFile zipFile : zipFiles) {
+            JavaPluginDescriptor descriptor = JavaPluginDescriptorFactory.load(zipFile);
+            if (descriptor == null) {
+                continue;
+            }
+            Plugin plugin = JavaPluginFactory
+                    .create(descriptor, zipFile, duplicateClassLoadStrategy, nodeType, context);
             initAndRegisterPlugin(plugin);
         }
     }
@@ -443,9 +533,31 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
         if (descriptor == null) {
             return false;
         }
-        Plugin plugin = JavaPluginFactory.create(descriptor, nodeType, context);
+        Plugin plugin = JavaPluginFactory
+                .create(descriptor, zipFile, duplicateClassLoadStrategy, nodeType, context);
         initAndRegisterPlugin(plugin);
         return true;
+    }
+
+    private void loadJavaPluginOrCloseFile(ZipFile zipFile) {
+        boolean loaded = false;
+        try {
+            loaded = loadJavaPlugin(zipFile);
+        } catch (Exception e) {
+            try {
+                zipFile.close();
+            } catch (IOException ex) {
+                e.addSuppressed(
+                        new InputOutputException("Caught an error while closing the zip file", ex));
+            }
+        }
+        if (!loaded) {
+            try {
+                zipFile.close();
+            } catch (IOException ex) {
+                throw new InputOutputException("Caught an error while closing the zip file", ex);
+            }
+        }
     }
 
     public void loadJsPlugins(Collection<JsFile> files) {
@@ -458,13 +570,13 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
     }
 
     public void loadJsPlugins(Collection<JsPluginScript> scripts, boolean save) {
-        if (!isJsScriptEnabled) {
+        if (!isJsEnabled) {
             throw new UnsupportedOperationException(
                     "JavaScript plugins are disabled because the classes of GraalJS are not loaded");
         }
         if (!allowSaveJsPlugins && save) {
             throw new FeatureDisabledException(
-                    "Cannot not save JavaScript plugins since it has been disabled");
+                    "Cannot save JavaScript plugins since it has been disabled");
         }
         if (CollectionUtil.isEmpty(scripts)) {
             return;
@@ -481,7 +593,7 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
     }
 
     public JsPlugin loadJsPlugin(String script, @Nullable Path path) {
-        if (!isJsScriptEnabled) {
+        if (!isJsEnabled) {
             throw new UnsupportedOperationException(
                     "JavaScript plugins are disabled because the classes of GraalJS are not loaded");
         }
@@ -568,7 +680,7 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
         }
         return Mono.whenDelayError(startMonos)
                 .onErrorResume(t -> Mono
-                        .error(new RuntimeException("Caught errors while starting plugins")))
+                        .error(new RuntimeException("Caught errors while starting plugins", t)))
                 .thenReturn(plugins.size());
     }
 
@@ -589,7 +701,7 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
         }
         return Mono.whenDelayError(stopMonos)
                 .onErrorResume(t -> Mono
-                        .error(new RuntimeException("Caught errors while stopping plugins")))
+                        .error(new RuntimeException("Caught errors while stopping plugins", t)))
                 .thenReturn(plugins.size());
     }
 
@@ -601,7 +713,7 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
         }
         return Mono.whenDelayError(resumeMonos)
                 .onErrorResume(t -> Mono
-                        .error(new RuntimeException("Caught errors while resuming plugins")))
+                        .error(new RuntimeException("Caught errors while resuming plugins", t)))
                 .thenReturn(plugins.size());
     }
 
@@ -613,7 +725,7 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
         }
         return Mono.whenDelayError(pauseMonos)
                 .onErrorResume(t -> Mono
-                        .error(new RuntimeException("Caught errors while pausing plugins")))
+                        .error(new RuntimeException("Caught errors while pausing plugins", t)))
                 .thenReturn(plugins.size());
     }
 
@@ -625,16 +737,47 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
             }
             for (Plugin plugin : plugins) {
                 try {
-                    Path path = plugin.descriptor()
-                            .getPath();
-                    if (path != null) {
-                        Files.deleteIfExists(path);
-                    }
+                    destroyPlugin(plugin);
                 } catch (Exception e) {
-                    // ignored
+                    LOGGER.error("Caught an error while deleting the plugin: {}",
+                            plugin.descriptor()
+                                    .getId(),
+                            e);
                 }
             }
         }));
+    }
+
+    private void destroyPlugin(Plugin plugin) throws Exception {
+        Exception exception = null;
+        PluginDescriptor descriptor = plugin.descriptor();
+        Path path = descriptor.getPath();
+        try {
+            plugin.close();
+        } catch (Exception e) {
+            exception = new RuntimeException(
+                    "Caught an error while closing the plugin: "
+                            + descriptor.getId(),
+                    e);
+        }
+        if (path != null) {
+            try {
+                Files.deleteIfExists(path);
+            } catch (IOException e) {
+                e = new IOException(
+                        "Caught an error while deleting the plugin file: "
+                                + path,
+                        e);
+                if (exception == null) {
+                    throw e;
+                } else {
+                    exception.addSuppressed(e);
+                }
+            }
+        }
+        if (exception != null) {
+            throw exception;
+        }
     }
 
     public <T extends ExtensionPoint> boolean hasRunningExtensions(Class<T> extensionPointClass) {
@@ -653,7 +796,7 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
                     ? Mono.empty()
                     : defaultValue;
         }
-        T extensionPoint = extensionPoints.get(0);
+        T extensionPoint = extensionPoints.getFirst();
         TurmsExtension extension = (TurmsExtension) extensionPoint;
         if (!extension.isRunning()) {
             return defaultValue == null
@@ -745,7 +888,7 @@ public class PluginManager implements ApplicationListener<ContextRefreshedEvent>
         List<Class<? extends ExtensionPoint>> extensionPointClasses =
                 extension.getExtensionPointClasses();
         for (Class<? extends ExtensionPoint> extensionPointClass : extensionPointClasses) {
-            List<ExtensionPointEventListener> listeners =
+            List<ExtensionPointEventListener<?>> listeners =
                     extensionPointClassToEventListener.get(extensionPointClass);
             if (listeners == null) {
                 return;

@@ -20,15 +20,18 @@ package im.turms.server.common.storage.mongo.operation.option;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import jakarta.annotation.Nullable;
 import jakarta.validation.constraints.NotNull;
 
 import org.bson.BsonDocument;
 import org.bson.BsonString;
+import org.bson.BsonValue;
 
 import im.turms.server.common.infra.collection.CollectionUtil;
 import im.turms.server.common.storage.mongo.BsonPool;
-import im.turms.server.common.storage.mongo.codec.BsonValueEncoder;
+import im.turms.server.common.storage.mongo.DomainFieldName;
+import im.turms.server.common.storage.mongo.codec.CodecUtil;
 
 /**
  * @author James Chen
@@ -107,7 +110,16 @@ public final class Update extends BaseBson {
             set = new BsonDocument();
             document.append("$set", set);
         }
-        set.put(key, BsonValueEncoder.encodeValue(value));
+        set.put(key, CodecUtil.encode(value));
+        return this;
+    }
+
+    private Update appendSet(String key, BsonValue value) {
+        if (set == null) {
+            set = new BsonDocument();
+            document.append("$set", set);
+        }
+        set.put(key, value);
         return this;
     }
 
@@ -125,7 +137,7 @@ public final class Update extends BaseBson {
             set = new BsonDocument();
             document.append("$set", set);
         }
-        set.put(key, BsonValueEncoder.encodeValuesAsStrings(collection));
+        set.put(key, CodecUtil.encodeAsStrings(collection));
         return this;
     }
 
@@ -140,15 +152,30 @@ public final class Update extends BaseBson {
 
     // region array
     public Update addToSet(String field, Object value) {
-        document.append("$addToSet",
-                new BsonDocument(field, BsonValueEncoder.encodeSingleValue(value)));
+        document.append("$addToSet", new BsonDocument(field, CodecUtil.encodeSingleValue(value)));
         return this;
     }
 
     public Update pullAll(String field, List<Object> values) {
-        document.append("$pullAll", new BsonDocument(field, BsonValueEncoder.encodeValue(values)));
+        document.append("$pullAll", new BsonDocument(field, CodecUtil.encode(values)));
         return this;
     }
+
+    // endregion
+
+    // region special values
+
+    public Update setUserDefinedAttributesIfNotEmpty(
+            @Nullable Map<String, Object> userDefinedAttributes) {
+        if (userDefinedAttributes != null) {
+            for (Map.Entry<String, Object> entry : userDefinedAttributes.entrySet()) {
+                appendSet(DomainFieldName.USER_DEFINED_ATTRIBUTE_PREFIX + entry.getKey(),
+                        CodecUtil.encode(entry.getValue()));
+            }
+        }
+        return this;
+    }
+
     // endregion
 
 }

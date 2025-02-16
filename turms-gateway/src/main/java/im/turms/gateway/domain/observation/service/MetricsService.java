@@ -22,12 +22,14 @@ import io.micrometer.core.instrument.Metrics;
 import lombok.Getter;
 import org.springframework.stereotype.Service;
 
+import im.turms.server.common.domain.common.service.BaseService;
+
 /**
  * @author James Chen
  */
 
 @Service
-public class MetricsService {
+public class MetricsService extends BaseService {
 
     @Getter
     private final MeterRegistry registry = Metrics.globalRegistry;

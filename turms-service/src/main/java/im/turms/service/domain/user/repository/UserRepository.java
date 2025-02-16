@@ -17,8 +17,12 @@
 
 package im.turms.service.domain.user.repository;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import jakarta.annotation.Nullable;
 
@@ -45,6 +49,15 @@ import im.turms.server.common.storage.mongo.operation.option.Update;
 @Repository
 public class UserRepository extends BaseRepository<User, Long> {
 
+    private static final String[] PUBLIC_USER_FIELDS = {DomainFieldName.ID,
+            User.Fields.NAME,
+            User.Fields.INTRO,
+            User.Fields.PROFILE_PICTURE,
+            User.Fields.REGISTRATION_DATE,
+            User.Fields.PROFILE_ACCESS_STRATEGY,
+            User.Fields.ROLE_ID,
+            User.Fields.IS_ACTIVE};
+
     public UserRepository(@Qualifier("userMongoClient") TurmsMongoClient mongoClient) {
         super(mongoClient, User.class);
     }
@@ -56,9 +69,10 @@ public class UserRepository extends BaseRepository<User, Long> {
             @Nullable String intro,
             @Nullable String profilePicture,
             @Nullable ProfileAccessStrategy profileAccessStrategy,
-            @Nullable Long permissionGroupId,
+            @Nullable Long roleId,
             @Nullable Date registrationDate,
             @Nullable Boolean isActive,
+            @Nullable Map<String, Object> userDefinedAttributes,
             @Nullable ClientSession session) {
         Filter filter = Filter.newBuilder(1)
                 .in(DomainFieldName.ID, userIds);
@@ -68,9 +82,10 @@ public class UserRepository extends BaseRepository<User, Long> {
                 .setIfNotNull(User.Fields.INTRO, intro)
                 .setIfNotNull(User.Fields.PROFILE_PICTURE, profilePicture)
                 .setIfNotNull(User.Fields.PROFILE_ACCESS_STRATEGY, profileAccessStrategy)
-                .setIfNotNull(User.Fields.PERMISSION_GROUP_ID, permissionGroupId)
+                .setIfNotNull(User.Fields.ROLE_ID, roleId)
                 .setIfNotNull(User.Fields.REGISTRATION_DATE, registrationDate)
                 .setIfNotNull(User.Fields.IS_ACTIVE, isActive)
+                .setUserDefinedAttributesIfNotEmpty(userDefinedAttributes)
                 .setIfNotNull(User.Fields.LAST_UPDATED_DATE, new Date());
         return mongoClient.updateMany(session, entityClass, filter, update);
     }
@@ -102,8 +117,14 @@ public class UserRepository extends BaseRepository<User, Long> {
     }
 
     public Mono<Long> countDeletedUsers(@Nullable DateRange dateRange) {
-        Filter filter = Filter.newBuilder(2)
-                .addBetweenIfNotNull(User.Fields.DELETION_DATE, dateRange);
+        Filter filter;
+        if (DateRange.hasDate(dateRange)) {
+            filter = Filter.newBuilder(2)
+                    .addBetweenIfNotNull(User.Fields.DELETION_DATE, dateRange);
+        } else {
+            filter = Filter.newBuilder(1)
+                    .ne(User.Fields.DELETION_DATE, null);
+        }
         return mongoClient.count(entityClass, filter);
     }
 
@@ -172,46 +193,56 @@ public class UserRepository extends BaseRepository<User, Long> {
 
     public Flux<User> findNotDeletedUserProfiles(
             Collection<Long> userIds,
+            Collection<String> includedUserDefinedAttributes,
             @Nullable Date lastUpdatedDate) {
         Filter filter = Filter.newBuilder(3)
                 .in(DomainFieldName.ID, userIds)
                 .eq(User.Fields.DELETION_DATE, null)
                 .gtIfNotNull(User.Fields.LAST_UPDATED_DATE, lastUpdatedDate);
-        QueryOptions options = QueryOptions.newBuilder(1)
-                .include(DomainFieldName.ID,
-                        User.Fields.NAME,
-                        User.Fields.INTRO,
-                        User.Fields.PROFILE_PICTURE,
-                        User.Fields.REGISTRATION_DATE,
-                        User.Fields.PROFILE_ACCESS_STRATEGY,
-                        User.Fields.PERMISSION_GROUP_ID,
-                        User.Fields.IS_ACTIVE);
+        QueryOptions options;
+        if (includedUserDefinedAttributes.isEmpty()) {
+            options = QueryOptions.newBuilder(1)
+                    .include(PUBLIC_USER_FIELDS);
+        } else {
+            List<String> includedFields = new ArrayList<>(
+                    includedUserDefinedAttributes.size() + PUBLIC_USER_FIELDS.length);
+            addUserDefinedAttributesToIncludedFields(includedFields, includedUserDefinedAttributes);
+            Collections.addAll(includedFields, PUBLIC_USER_FIELDS);
+            options = QueryOptions.newBuilder(1)
+                    .include(includedFields);
+        }
         return mongoClient.findMany(entityClass, filter, options);
     }
 
-    public Flux<User> findUsersProfile(Collection<Long> userIds, boolean queryDeletedRecords) {
+    public Flux<User> findUsersProfile(
+            Collection<Long> userIds,
+            Collection<String> includedUserDefinedAttributes,
+            boolean queryDeletedRecords) {
         Filter filter = Filter.newBuilder(2)
                 .in(DomainFieldName.ID, userIds)
                 .eqIfFalse(User.Fields.DELETION_DATE, null, queryDeletedRecords);
-        QueryOptions options = QueryOptions.newBuilder(1)
-                .include(DomainFieldName.ID,
-                        User.Fields.NAME,
-                        User.Fields.INTRO,
-                        User.Fields.PROFILE_PICTURE,
-                        User.Fields.REGISTRATION_DATE,
-                        User.Fields.PROFILE_ACCESS_STRATEGY,
-                        User.Fields.PERMISSION_GROUP_ID,
-                        User.Fields.IS_ACTIVE);
+        QueryOptions options;
+        if (includedUserDefinedAttributes.isEmpty()) {
+            options = QueryOptions.newBuilder(1)
+                    .include(PUBLIC_USER_FIELDS);
+        } else {
+            List<String> includedFields = new ArrayList<>(
+                    includedUserDefinedAttributes.size() + PUBLIC_USER_FIELDS.length);
+            addUserDefinedAttributesToIncludedFields(includedFields, includedUserDefinedAttributes);
+            Collections.addAll(includedFields, PUBLIC_USER_FIELDS);
+            options = QueryOptions.newBuilder(1)
+                    .include(includedFields);
+        }
         return mongoClient.findMany(entityClass, filter, options);
     }
 
-    public Mono<Long> findUserPermissionGroupId(Long userId) {
+    public Mono<Long> findUserRoleId(Long userId) {
         Filter filter = Filter.newBuilder(1)
                 .eq(DomainFieldName.ID, userId);
         QueryOptions options = QueryOptions.newBuilder(1)
-                .include(User.Fields.PERMISSION_GROUP_ID);
+                .include(User.Fields.ROLE_ID);
         return mongoClient.findOne(entityClass, filter, options)
-                .map(User::getPermissionGroupId);
+                .map(User::getRoleId);
     }
 
     public Mono<Boolean> isActiveAndNotDeleted(Long userId) {

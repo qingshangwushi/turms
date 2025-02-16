@@ -17,6 +17,7 @@
 
 package im.turms.server.common.domain.observation.access.admin.controller;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import jakarta.annotation.Nullable;
 
@@ -29,9 +30,9 @@ import im.turms.server.common.access.admin.web.HttpRequestDispatcher;
 import im.turms.server.common.access.admin.web.annotation.GetMapping;
 import im.turms.server.common.access.admin.web.annotation.RestController;
 import im.turms.server.common.infra.address.BaseServiceAddressManager;
+import im.turms.server.common.infra.application.TurmsApplicationContext;
 import im.turms.server.common.infra.cluster.node.Node;
-import im.turms.server.common.infra.context.TurmsApplicationContext;
-import im.turms.server.common.infra.io.FileUtil;
+import im.turms.server.common.infra.lang.StringUtil;
 import im.turms.server.common.infra.netty.ByteBufUtil;
 import im.turms.server.common.infra.openapi.OpenApiBuilder;
 
@@ -41,6 +42,11 @@ import static im.turms.server.common.access.admin.web.MediaTypeConst.APPLICATION
 import static im.turms.server.common.access.admin.web.MediaTypeConst.IMAGE_PNG;
 import static im.turms.server.common.access.admin.web.MediaTypeConst.TEXT_CSS;
 import static im.turms.server.common.access.admin.web.MediaTypeConst.TEXT_HTML;
+import static im.turms.server.common.infra.openapi.OpenApiResourceConst.FAVICON_32x32;
+import static im.turms.server.common.infra.openapi.OpenApiResourceConst.INDEX_CSS;
+import static im.turms.server.common.infra.openapi.OpenApiResourceConst.SWAGGER_UI_BUNDLE;
+import static im.turms.server.common.infra.openapi.OpenApiResourceConst.SWAGGER_UI_CSS;
+import static im.turms.server.common.infra.openapi.OpenApiResourceConst.SWAGGER_UI_STANDALONE_PRESET;
 
 /**
  * @author James Chen
@@ -48,22 +54,27 @@ import static im.turms.server.common.access.admin.web.MediaTypeConst.TEXT_HTML;
 @RestController("openapi")
 public class OpenApiController {
 
-    private static final ByteBuf FAVICON_32_32;
-    private static final ByteBuf INDEX_HTML;
-    private static final ByteBuf INDEX_CSS;
-    private static final ByteBuf SWAGGER_UI_CSS;
-    private static final ByteBuf SWAGGER_UI_BUNDLE;
-    private static final ByteBuf SWAGGER_UI_STANDALONE_PRESET;
+    private final Node node;
+    private final ApplicationContext context;
 
-    static {
-        FAVICON_32_32 = FileUtil.getWebJarAssetAsBuffer("swagger-ui/*/favicon-32x32.png");
-        INDEX_HTML = ByteBufUtil.getUnreleasableDirectBuffer(
+    private volatile ByteBuf apiBuffer;
+    private final ByteBuf indexHtml;
+    private final ByteBuf swaggerInitializer;
+
+    public OpenApiController(
+            Node node,
+            ApplicationContext context,
+            BaseServiceAddressManager serviceAddressManager) {
+        this.node = node;
+        this.context = context;
+        // language=HTML
+        String indexHtmlStr =
                 """
                         <!DOCTYPE html>
                         <html lang="en">
                           <head>
                             <meta charset="UTF-8">
-                            <title>Swagger UI</title>
+                            <title>{} OpenAPI</title>
                             <link rel="stylesheet" type="text/css" href="/openapi/ui/swagger-ui.css" />
                             <link rel="stylesheet" type="text/css" href="/openapi/ui/index.css" />
                             <link rel="icon" type="image/png" href="/openapi/ui/favicon-32x32.png" sizes="32x32" />
@@ -75,26 +86,17 @@ public class OpenApiController {
                             <script src="/openapi/ui/swagger-initializer.js" charset="UTF-8"> </script>
                           </body>
                         </html>
-                        """);
-        INDEX_CSS = FileUtil.getWebJarAssetAsBuffer("swagger-ui/*/index.css");
-        SWAGGER_UI_CSS = FileUtil.getWebJarAssetAsBuffer("swagger-ui/*/swagger-ui.css");
-        SWAGGER_UI_BUNDLE = FileUtil.getWebJarAssetAsBuffer("swagger-ui/*/swagger-ui-bundle.js.gz");
-        SWAGGER_UI_STANDALONE_PRESET =
-                FileUtil.getWebJarAssetAsBuffer("swagger-ui/*/swagger-ui-standalone-preset.js.gz");
-    }
-
-    private final ApplicationContext context;
-    private volatile ByteBuf apiBuffer;
-    private final ByteBuf swaggerInitializer;
-
-    public OpenApiController(
-            ApplicationContext context,
-            BaseServiceAddressManager serviceAddressManager) {
-        this.context = context;
-        swaggerInitializer = ByteBufUtil.getUnreleasableDirectBuffer("""
+                        """;
+        indexHtml = ByteBufUtil.getUnreleasableDirectBuffer(StringUtil
+                .substitute(indexHtmlStr,
+                        node.getNodeType()
+                                .getDisplayName())
+                .getBytes(StandardCharsets.UTF_8));
+        // language=JavaScript
+        String swaggerInitializerStr = """
                 window.onload = function() {
                   window.ui = SwaggerUIBundle({
-                    url: "%s/openapi/docs",
+                    url: "{}/openapi/docs",
                     dom_id: '#swagger-ui',
                     deepLinking: true,
                     presets: [
@@ -107,7 +109,9 @@ public class OpenApiController {
                     layout: "StandaloneLayout"
                   });
                 };
-                """.formatted(serviceAddressManager.getAdminApiAddress()));
+                """;
+        swaggerInitializer = ByteBufUtil.getUnreleasableDirectBuffer(StringUtil
+                .substitute(swaggerInitializerStr, serviceAddressManager.getAdminApiAddress()));
     }
 
     @GetMapping(value = "docs", produces = APPLICATION_JSON)
@@ -124,12 +128,12 @@ public class OpenApiController {
 
     @GetMapping(value = "ui", produces = TEXT_HTML)
     public ByteBuf getIndexHtml() {
-        return INDEX_HTML;
+        return indexHtml;
     }
 
     @GetMapping(value = "ui/favicon-32x32.png", produces = IMAGE_PNG)
     public ByteBuf getFavicon3232() {
-        return FAVICON_32_32;
+        return FAVICON_32x32;
     }
 
     @GetMapping(value = "ui/index.css", produces = TEXT_CSS)
@@ -178,8 +182,7 @@ public class OpenApiController {
         byte[] bytes = OpenApiBuilder.build(context.getBean(TurmsApplicationContext.class)
                 .getBuildProperties()
                 .version(),
-                context.getBean(Node.class)
-                        .getNodeType()
+                node.getNodeType()
                         .getDisplayName(),
                 context.getBean(BaseServiceAddressManager.class)
                         .getAdminApiAddress(),

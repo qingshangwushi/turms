@@ -18,7 +18,6 @@
 package im.turms.gateway.access.client.websocket;
 
 import java.net.InetSocketAddress;
-import java.util.List;
 import jakarta.annotation.Nullable;
 
 import io.netty.buffer.ByteBuf;
@@ -118,8 +117,7 @@ public final class WebSocketServerFactory {
                 .runOn(LoopResourcesFactory.createForServer(ThreadNameConst.GATEWAY_WS_PREFIX))
                 .metrics(true,
                         () -> new TurmsMicrometerChannelMetricsRecorder(
-                                MetricNameConst.CLIENT_NETWORK,
-                                "websocket"))
+                                MetricNameConst.TURMS_GATEWAY_SERVER_WEBSOCKET))
                 .handle((request, response) -> handleHttpRequest(blocklistService,
                         request,
                         response,
@@ -229,14 +227,13 @@ public final class WebSocketServerFactory {
                             + method
                             + "' not supported");
         }
-        if (!"WebSocket".equalsIgnoreCase(headers.get(UPGRADE))) {
+        if (!headers.containsValue(UPGRADE, "websocket", true)) {
             return new HttpResponseStatus(
                     HttpResponseStatus.BAD_REQUEST.code(),
                     "Invalid 'Upgrade' header: "
                             + headers);
         }
-        List<String> connectionValue = headers.getAll(CONNECTION);
-        if (!connectionValue.contains("Upgrade") && !connectionValue.contains("upgrade")) {
+        if (!headers.containsValue(CONNECTION, "upgrade", true)) {
             return new HttpResponseStatus(
                     HttpResponseStatus.BAD_REQUEST.code(),
                     "Invalid 'Connection' header: "

@@ -24,6 +24,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import jakarta.annotation.Nullable;
@@ -37,6 +38,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.UpdateResult;
 import com.mongodb.reactivestreams.client.ClientSession;
+import io.lettuce.core.ScriptOutputType;
 import io.micrometer.core.instrument.Counter;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.PooledByteBufAllocator;
@@ -44,15 +46,17 @@ import lombok.Getter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.DependsOn;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.math.MathFlux;
 
 import im.turms.server.common.access.client.dto.ClientMessagePool;
 import im.turms.server.common.access.client.dto.constant.DeviceType;
 import im.turms.server.common.access.client.dto.notification.TurmsNotification;
 import im.turms.server.common.access.common.ResponseStatusCode;
+import im.turms.server.common.domain.common.service.BaseService;
 import im.turms.server.common.domain.session.bo.UserSessionId;
 import im.turms.server.common.infra.cluster.node.Node;
 import im.turms.server.common.infra.cluster.service.idgen.ServiceType;
@@ -63,6 +67,7 @@ import im.turms.server.common.infra.exception.ResponseException;
 import im.turms.server.common.infra.lang.LongUtil;
 import im.turms.server.common.infra.logging.core.logger.Logger;
 import im.turms.server.common.infra.logging.core.logger.LoggerFactory;
+import im.turms.server.common.infra.message.OutboundMessageManager;
 import im.turms.server.common.infra.net.InetAddressUtil;
 import im.turms.server.common.infra.netty.ReferenceCountUtil;
 import im.turms.server.common.infra.plugin.PluginManager;
@@ -76,13 +81,15 @@ import im.turms.server.common.infra.reactor.PublisherPool;
 import im.turms.server.common.infra.recycler.Recyclable;
 import im.turms.server.common.infra.recycler.SetRecycler;
 import im.turms.server.common.infra.task.TaskManager;
+import im.turms.server.common.infra.test.VisibleForTesting;
 import im.turms.server.common.infra.time.DateRange;
-import im.turms.server.common.infra.time.DateUtil;
+import im.turms.server.common.infra.time.DateTimeUtil;
 import im.turms.server.common.infra.validation.Validator;
 import im.turms.server.common.storage.mongo.IMongoCollectionInitializer;
 import im.turms.server.common.storage.mongo.operation.OperationResultConvertor;
+import im.turms.server.common.storage.redis.RedisEntryIdConst;
 import im.turms.server.common.storage.redis.TurmsRedisClientManager;
-import im.turms.service.domain.common.permission.ServicePermission;
+import im.turms.server.common.storage.redis.script.RedisScript;
 import im.turms.service.domain.conversation.service.ConversationService;
 import im.turms.service.domain.group.service.GroupMemberService;
 import im.turms.service.domain.group.service.GroupService;
@@ -104,37 +111,42 @@ import static im.turms.server.common.access.common.ResponseStatusCode.NOT_SENDER
 import static im.turms.server.common.access.common.ResponseStatusCode.OK;
 import static im.turms.server.common.access.common.ResponseStatusCode.RECALLING_MESSAGE_IS_DISABLED;
 import static im.turms.server.common.access.common.ResponseStatusCode.RECALL_MESSAGE_OF_NONEXISTENT_GROUP;
-import static im.turms.server.common.access.common.ResponseStatusCode.RECALL_NONEXISTENT_MESSAGE;
 import static im.turms.server.common.access.common.ResponseStatusCode.UPDATE_MESSAGE_OF_NONEXISTENT_GROUP;
 import static im.turms.server.common.access.common.ResponseStatusCode.UPDATING_GROUP_MESSAGE_BY_SENDER_IS_DISABLED;
 import static im.turms.server.common.access.common.ResponseStatusCode.UPDATING_MESSAGE_BY_SENDER_IS_DISABLED;
 import static im.turms.server.common.domain.admin.constant.AdminConst.ADMIN_REQUESTER_ID;
 import static im.turms.server.common.domain.admin.constant.AdminConst.ADMIN_REQUEST_ID;
-import static im.turms.service.infra.metrics.MetricNameConst.SENT_MESSAGES_COUNTER;
+import static im.turms.service.infra.metrics.MetricNameConst.TURMS_BUSINESS_MESSAGE_SENT;
 
 /**
  * @author James Chen
  */
 @Service
 @DependsOn(IMongoCollectionInitializer.BEAN_NAME)
-public class MessageService {
+public class MessageService extends BaseService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MessageService.class);
 
-    private static final byte[] GROUP_CONVERSATION_SEQUENCE_ID_PREFIX = {'g', 'i'};
-    private static final byte[] PRIVATE_CONVERSATION_SEQUENCE_ID_PREFIX = {'p', 'i'};
+    private static final Mono<MessageAndRecipientIds> ERROR_NOT_MESSAGE_RECIPIENT_OR_SENDER_TO_FORWARD_MESSAGE =
+            Mono.error(ResponseException.get(NOT_MESSAGE_RECIPIENT_OR_SENDER_TO_FORWARD_MESSAGE));
+
     private static final Method GET_MESSAGES_TO_DELETE_METHOD;
 
     private final MessageRepository messageRepository;
+
+    private final OutboundMessageManager outboundMessageManager;
     @Nullable
     private final TurmsRedisClientManager redisClientManager;
     private final Node node;
+
     private final ConversationService conversationService;
-    private final OutboundMessageService outboundMessageService;
     private final GroupService groupService;
     private final GroupMemberService groupMemberService;
     private final UserService userService;
     private final PluginManager pluginManager;
+
+    private final RedisScript<Long> deletePrivateMessageSequenceIdScript;
+    private final RedisScript<Long> getPrivateMessageSequenceIdScript;
 
     private final boolean useConversationId;
     private final boolean useSequenceIdForGroupConversation;
@@ -181,6 +193,7 @@ public class MessageService {
     @Autowired
     public MessageService(
             MessageRepository messageRepository,
+            OutboundMessageManager outboundMessageManager,
             @Nullable @Autowired(
                     required = false) @Qualifier("sequenceIdRedisClientManager") TurmsRedisClientManager sequenceIdRedisClientManager,
 
@@ -191,25 +204,42 @@ public class MessageService {
             GroupService groupService,
             GroupMemberService groupMemberService,
             UserService userService,
-            OutboundMessageService outboundMessageService,
             MetricsService metricsService,
 
             PluginManager pluginManager,
             TaskManager taskManager) {
         this.messageRepository = messageRepository;
+        this.outboundMessageManager = outboundMessageManager;
         this.redisClientManager = sequenceIdRedisClientManager;
         this.node = node;
         this.conversationService = conversationService;
         this.groupService = groupService;
         this.groupMemberService = groupMemberService;
         this.userService = userService;
-        this.outboundMessageService = outboundMessageService;
         this.pluginManager = pluginManager;
+
+        Map<String, Object> scriptParams = Map.of("RELATED_USER_IDS_KEY",
+                "\""
+                        + RedisEntryIdConst.KEY_RELATED_USER_IDS
+                        + "\"",
+                "PRIVATE_MESSAGE_SEQUENCE_ID_KEY",
+                "\""
+                        + RedisEntryIdConst.KEY_PRIVATE_MESSAGE_SEQUENCE_ID
+                        + "\"");
+        deletePrivateMessageSequenceIdScript = RedisScript.get(
+                new ClassPathResource("redis/message/delete_private_message_sequence_id.lua"),
+                ScriptOutputType.INTEGER,
+                scriptParams);
+        getPrivateMessageSequenceIdScript = RedisScript.get(
+                new ClassPathResource("redis/message/get_private_message_sequence_id.lua"),
+                ScriptOutputType.INTEGER,
+                scriptParams);
 
         TurmsProperties globalProperties = propertiesManager.getGlobalProperties();
         MessageProperties messageProperties = globalProperties.getService()
                 .getMessage();
         useConversationId = messageProperties.isUseConversationId();
+
         SequenceIdProperties sequenceIdProperties = messageProperties.getSequenceId();
         useSequenceIdForGroupConversation =
                 sequenceIdProperties.isUseSequenceIdForGroupConversation();
@@ -234,7 +264,7 @@ public class MessageService {
             sentMessageCache = null;
         }
         sentMessageCounter = metricsService.getRegistry()
-                .counter(SENT_MESSAGES_COUNTER);
+                .counter(TURMS_BUSINESS_MESSAGE_SENT);
         propertiesManager.notifyAndAddGlobalPropertiesChangeListener(this::updateProperties);
         // Set up the checker for expired messages join requests
         taskManager.reschedule("expiredMessagesCleanup",
@@ -336,33 +366,6 @@ public class MessageService {
         return isGroupMessage
                 ? groupMemberService.isGroupMember(targetId, userId, false)
                 : Mono.just(targetId.equals(userId) || senderId.equals(userId));
-    }
-
-    public Mono<ServicePermission> isMessageRecallable(@NotNull Long messageId) {
-        try {
-            Validator.notNull(messageId, "messageId");
-        } catch (ResponseException e) {
-            return Mono.error(e);
-        }
-        Mono<Date> deliveryDateMono = null;
-        if (sentMessageCache != null) {
-            Message message = sentMessageCache.getIfPresent(messageId);
-            if (message != null) {
-                Date deliveryDate = message.getDeliveryDate();
-                if (deliveryDate != null) {
-                    deliveryDateMono = Mono.just(deliveryDate);
-                }
-            }
-        }
-        if (deliveryDateMono == null) {
-            deliveryDateMono = messageRepository.findDeliveryDate(messageId);
-        }
-        return deliveryDateMono
-                .map(deliveryDate -> deliveryDate.getTime()
-                        - System.currentTimeMillis() < availableRecallDurationMillis
-                                ? ServicePermission.OK
-                                : ServicePermission.get(MESSAGE_RECALL_TIMEOUT))
-                .defaultIfEmpty(ServicePermission.get(RECALL_NONEXISTENT_MESSAGE));
     }
 
     public Flux<Message> authAndQueryCompleteMessages(
@@ -603,7 +606,9 @@ public class MessageService {
         if (messageId == null) {
             messageId = node.nextLargeGapId(ServiceType.MESSAGE);
         }
-        if (!persistRecord) {
+        // Always allow persisting records if the message is a system message
+        // as some system messages use records to pass custom data.
+        if (!persistRecord && !isSystemMessage) {
             records = null;
         }
         if (!persistPreMessageId) {
@@ -619,17 +624,35 @@ public class MessageService {
                     ? MessageRepository.getGroupConversationId(targetId)
                     : null;
             if (useSequenceIdForGroupConversation) {
-                sequenceId = fetchSequenceId(true, targetId);
+                sequenceId = fetchGroupMessageSequenceId(targetId);
             }
         } else {
             conversationId = useConversationId
                     ? MessageRepository.getPrivateConversationId(senderId, targetId)
                     : null;
             if (useSequenceIdForPrivateConversation) {
-                sequenceId = fetchSequenceId(false, targetId);
+                sequenceId = fetchPrivateMessageSequenceId(senderId, targetId);
             }
         }
         Mono<Message> saveMessage;
+        Integer senderIpV4;
+        byte[] senderIpV6;
+        if (senderIp == null) {
+            senderIpV4 = null;
+            senderIpV6 = null;
+        } else {
+            int length = senderIp.length;
+            if (length == InetAddressUtil.IPV4_BYTE_LENGTH) {
+                senderIpV4 = InetAddressUtil.ipV4BytesToUnsignedInt(senderIp);
+                senderIpV6 = null;
+            } else if (length == InetAddressUtil.IPV6_BYTE_LENGTH) {
+                senderIpV4 = null;
+                senderIpV6 = senderIp;
+            } else {
+                return Mono.error(ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
+                        "\"senderIp\" must be an IPv4 or IPv6 address"));
+            }
+        }
         if (sequenceId == null) {
             Message message = new Message(
                     messageId,
@@ -642,9 +665,8 @@ public class MessageService {
                     null,
                     text,
                     senderId,
-                    senderIp == null
-                            ? null
-                            : InetAddressUtil.ipBytesToInt(senderIp),
+                    senderIpV4,
+                    senderIpV6,
                     targetId,
                     records,
                     burnAfter,
@@ -658,7 +680,6 @@ public class MessageService {
             Date finalDeliveryDate = deliveryDate;
             List<byte[]> finalRecords = records;
             Long finalPreMessageId = preMessageId;
-            byte[] finalSenderIp = senderIp;
             saveMessage = sequenceId.flatMap(seqId -> {
                 Message message = new Message(
                         finalMessageId,
@@ -671,9 +692,8 @@ public class MessageService {
                         null,
                         text,
                         senderId,
-                        finalSenderIp == null
-                                ? null
-                                : InetAddressUtil.ipBytesToInt(finalSenderIp),
+                        senderIpV4,
+                        senderIpV6,
                         targetId,
                         finalRecords,
                         burnAfter,
@@ -707,7 +727,8 @@ public class MessageService {
         } catch (ResponseException e) {
             return Flux.error(e);
         }
-        Date expirationDate = DateUtil.addHours(System.currentTimeMillis(), -retentionPeriodHours);
+        Date expirationDate =
+                DateTimeUtil.addHours(System.currentTimeMillis(), -retentionPeriodHours);
         return messageRepository.findExpiredMessageIds(expirationDate);
     }
 
@@ -779,69 +800,67 @@ public class MessageService {
         if (Validator.areAllNull(isSystemMessage, text, records, burnAfter, recallDate, senderIp)) {
             return OperationResultPublisherPool.ACKNOWLEDGED_UPDATE_RESULT;
         }
-        if (recallDate == null) {
-            return messageRepository.updateMessages(messageIds,
-                    isSystemMessage,
-                    senderIp == null
-                            ? null
-                            : InetAddressUtil.ipBytesToInt(senderIp),
-                    text,
-                    records,
-                    burnAfter,
-                    session);
+        Integer senderIpV4;
+        byte[] senderIpV6;
+        if (senderIp == null) {
+            senderIpV4 = null;
+            senderIpV6 = null;
+        } else {
+            int length = senderIp.length;
+            if (length == InetAddressUtil.IPV4_BYTE_LENGTH) {
+                senderIpV4 = InetAddressUtil.ipV4BytesToUnsignedInt(senderIp);
+                senderIpV6 = null;
+            } else if (length == InetAddressUtil.IPV6_BYTE_LENGTH) {
+                senderIpV4 = null;
+                senderIpV6 = senderIp;
+            } else {
+                return Mono.error(ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
+                        "\"senderIp\" must be an IPv4 or IPv6 address"));
+            }
         }
-        return messageRepository.findByIds(messageIds)
-                .map(message -> {
-                    byte[] messageId = LongUtil.toBytes(message.getId());
-                    return authAndSaveAndSendMessage(true,
-                            null,
-                            senderId,
-                            senderDeviceType,
-                            senderIp,
-                            null,
-                            message.getIsGroupMessage(),
-                            true,
-                            null,
-                            List.of(BuiltinSystemMessageType.RECALL_MESSAGE_BYTES, messageId),
-                            message.getTargetId(),
-                            null,
-                            null,
-                            null);
-                })
-                .collect(CollectorUtil.toList(messageIds.size()))
-                .flatMap(messageMonos -> {
-                    int size = messageMonos.size();
-                    return Mono.whenDelayError(messageMonos)
-                            .thenReturn(UpdateResult.acknowledged(size, (long) size, null));
-                });
-    }
-
-    public Mono<UpdateResult> updateMessage(
-            @Nullable Long senderId,
-            @Nullable DeviceType senderDeviceType,
-            @NotNull Long messageId,
-            @Nullable Boolean isSystemMessage,
-            @Nullable String text,
-            @Nullable List<byte[]> records,
-            @Nullable @Min(0) Integer burnAfter,
-            @Nullable @PastOrPresent Date recallDate,
-            @Nullable byte[] senderIp,
-            @Nullable ClientSession session) {
-        try {
-            Validator.notNull(messageId, "messageId");
-        } catch (ResponseException e) {
-            return Mono.error(e);
-        }
-        return updateMessages(senderId,
-                senderDeviceType,
-                Set.of(messageId),
+        Mono<UpdateResult> update = messageRepository.updateMessages(messageIds,
                 isSystemMessage,
+                senderIpV4,
+                senderIpV6,
+                recallDate,
                 text,
                 records,
                 burnAfter,
-                recallDate,
-                senderIp,
                 session);
+        if (recallDate != null) {
+            update = update.flatMap(updateResult -> {
+                if (updateResult.getModifiedCount() == 0) {
+                    return OperationResultPublisherPool.ACKNOWLEDGED_UPDATE_RESULT;
+                }
+                // TODO: use cache
+                return messageRepository.findByIds(messageIds)
+                        .collect(CollectorUtil.toList(messageIds.size()))
+                        .flatMap(messages -> {
+                            List<Mono<Void>> saveAndSendMessageMonos =
+                                    new ArrayList<>(messageIds.size());
+                            for (Message message : messages) {
+                                saveAndSendMessageMonos.add(saveAndSendMessage(true,
+                                        null,
+                                        senderId,
+                                        senderDeviceType,
+                                        senderIp,
+                                        null,
+                                        message.getIsGroupMessage(),
+                                        true,
+                                        null,
+                                        List.of(BuiltinSystemMessageType.RECALL_MESSAGE_BYTES,
+                                                LongUtil.toBytes(message.getId())),
+                                        message.getTargetId(),
+                                        null,
+                                        null,
+                                        null));
+                            }
+                            return Mono.whenDelayError(saveAndSendMessageMonos);
+                        })
+                        .thenReturn(updateResult);
+            });
+        }
+        return update;
     }
 
     public Mono<Boolean> hasPrivateMessage(Long senderId, Long targetId) {
@@ -968,37 +987,29 @@ public class MessageService {
             @Nullable String text,
             @Nullable List<byte[]> records,
             @Nullable @PastOrPresent Date recallDate) {
-        boolean updateMessageContent = text != null || !CollectionUtils.isEmpty(records);
-        if (!updateMessageContent && recallDate == null) {
-            return Mono.empty();
-        }
         Mono<Void> checkIfAllowedToUpdate;
-        if (updateMessageContent) {
+        if (text != null || CollectionUtil.isNotEmpty(records)) {
+            // TODO: use cache
             checkIfAllowedToUpdate = checkIfAllowedToUpdateMessage(messageId, senderId);
             if (recallDate != null) {
                 checkIfAllowedToUpdate = checkIfAllowedToUpdate
                         .then(checkIfAllowedToRecallMessage(messageId, senderId));
             }
+        } else if (recallDate == null) {
+            return OperationResultPublisherPool.ACKNOWLEDGED_UPDATE_RESULT;
         } else {
             checkIfAllowedToUpdate = checkIfAllowedToRecallMessage(messageId, senderId);
         }
-        return checkIfAllowedToUpdate.then(Mono.defer(() -> recallDate == null
-                ? updateMessage(senderId,
-                        senderDeviceType,
-                        messageId,
-                        null,
-                        text,
-                        records,
-                        null,
-                        null,
-                        null,
-                        null)
-                : updateMessageRecallDate(senderId,
-                        senderDeviceType,
-                        messageId,
-                        text,
-                        records,
-                        recallDate)));
+        return checkIfAllowedToUpdate.then(updateMessages(senderId,
+                senderDeviceType,
+                Set.of(messageId),
+                null,
+                text,
+                records,
+                null,
+                recallDate,
+                null,
+                null));
     }
 
     private Mono<Void> checkIfAllowedToUpdateMessage(Long messageId, Long senderId) {
@@ -1049,16 +1060,25 @@ public class MessageService {
         }
         if (sentMessageCache != null) {
             Message message = sentMessageCache.getIfPresent(messageId);
-            if (message != null
-                    && (!message.getSenderId()
-                            .equals(senderId))) {
-                return Mono.error(ResponseException.get(NOT_SENDER_TO_RECALL_MESSAGE));
+            if (message != null) {
+                if (!message.getSenderId()
+                        .equals(senderId)) {
+                    return Mono.error(ResponseException.get(NOT_SENDER_TO_RECALL_MESSAGE));
+                }
+                if (System.currentTimeMillis() - message.getDeliveryDate()
+                        .getTime() > availableRecallDurationMillis) {
+                    return Mono.error(ResponseException.get(MESSAGE_RECALL_TIMEOUT));
+                }
             }
         }
-        return messageRepository.findIsGroupMessageAndTargetId(messageId, senderId)
+        return messageRepository.findIsGroupMessageAndTargetIdAndDeliveryDate(messageId, senderId)
                 .switchIfEmpty(Mono.defer(
                         () -> Mono.error(ResponseException.get(NOT_SENDER_TO_RECALL_MESSAGE))))
                 .flatMap(message -> {
+                    if (System.currentTimeMillis() - message.getDeliveryDate()
+                            .getTime() > availableRecallDurationMillis) {
+                        return Mono.error(ResponseException.get(MESSAGE_RECALL_TIMEOUT));
+                    }
                     if (message.getIsGroupMessage()) {
                         return groupService
                                 .queryGroupTypeIfActiveAndNotDeleted(message.getTargetId())
@@ -1254,8 +1274,7 @@ public class MessageService {
                 message.getTargetId(),
                 message.getSenderId()).flatMap(isMessageRecipientOrSender -> {
                     if (!isMessageRecipientOrSender) {
-                        return Mono.error(ResponseException
-                                .get(NOT_MESSAGE_RECIPIENT_OR_SENDER_TO_FORWARD_MESSAGE));
+                        return ERROR_NOT_MESSAGE_RECIPIENT_OR_SENDER_TO_FORWARD_MESSAGE;
                     }
                     return authAndSaveMessage(queryRecipientIds,
                             null,
@@ -1268,13 +1287,105 @@ public class MessageService {
                             message.getText(),
                             message.getRecords(),
                             message.getBurnAfter(),
-                            message.getDeliveryDate(),
+                            null,
                             referenceId,
                             null);
-                }));
+                }))
+                // We should not tell the client that the message was not found.
+                // Otherwise, the user can check if any message exists or not.
+                .switchIfEmpty(ERROR_NOT_MESSAGE_RECIPIENT_OR_SENDER_TO_FORWARD_MESSAGE);
+    }
+
+    public Mono<MessageAndRecipientIds> cloneAndSaveMessage(
+            boolean queryRecipientIds,
+            @NotNull Long senderId,
+            @Nullable byte[] senderIp,
+            @NotNull Long referenceId,
+            @NotNull Boolean isGroupMessage,
+            @NotNull Boolean isSystemMessage,
+            @NotNull Long targetId) {
+        return queryMessage(referenceId).flatMap(message -> saveMessage(queryRecipientIds,
+                null,
+                node.nextLargeGapId(ServiceType.MESSAGE),
+                senderId,
+                senderIp,
+                targetId,
+                isGroupMessage,
+                isSystemMessage,
+                message.getText(),
+                message.getRecords(),
+                message.getBurnAfter(),
+                message.getDeliveryDate(),
+                referenceId,
+                null));
     }
 
     public Mono<Void> authAndSaveAndSendMessage(
+            boolean send,
+            @Nullable Boolean persist,
+            @Nullable Long senderId,
+            @Nullable DeviceType senderDeviceType,
+            @Nullable byte[] senderIp,
+            @Nullable Long messageId,
+            @NotNull Boolean isGroupMessage,
+            @NotNull Boolean isSystemMessage,
+            @Nullable String text,
+            @Nullable List<byte[]> records,
+            @NotNull Long targetId,
+            @Nullable @Min(0) Integer burnAfter,
+            @Nullable Long referenceId,
+            @Nullable Long preMessageId) {
+        return saveAndSendMessage0(true,
+                send,
+                persist,
+                senderId,
+                senderDeviceType,
+                senderIp,
+                messageId,
+                isGroupMessage,
+                isSystemMessage,
+                text,
+                records,
+                targetId,
+                burnAfter,
+                referenceId,
+                preMessageId);
+    }
+
+    public Mono<Void> saveAndSendMessage(
+            boolean send,
+            @Nullable Boolean persist,
+            @Nullable Long senderId,
+            @Nullable DeviceType senderDeviceType,
+            @Nullable byte[] senderIp,
+            @Nullable Long messageId,
+            @NotNull Boolean isGroupMessage,
+            @NotNull Boolean isSystemMessage,
+            @Nullable String text,
+            @Nullable List<byte[]> records,
+            @NotNull Long targetId,
+            @Nullable @Min(0) Integer burnAfter,
+            @Nullable Long referenceId,
+            @Nullable Long preMessageId) {
+        return saveAndSendMessage0(false,
+                send,
+                persist,
+                senderId,
+                senderDeviceType,
+                senderIp,
+                messageId,
+                isGroupMessage,
+                isSystemMessage,
+                text,
+                records,
+                targetId,
+                burnAfter,
+                referenceId,
+                preMessageId);
+    }
+
+    private Mono<Void> saveAndSendMessage0(
+            boolean auth,
             boolean send,
             @Nullable Boolean persist,
             @Nullable Long senderId,
@@ -1309,28 +1420,54 @@ public class MessageService {
             }
         }
         Date deliveryDate = new Date();
-        Mono<MessageAndRecipientIds> saveMono = referenceId == null
-                ? authAndSaveMessage(send,
-                        persist,
-                        messageId,
-                        senderId,
-                        senderIp,
-                        targetId,
-                        isGroupMessage,
-                        isSystemMessage,
-                        text,
-                        records,
-                        burnAfter,
-                        deliveryDate,
-                        null,
-                        preMessageId)
-                : authAndCloneAndSaveMessage(send,
-                        senderId,
-                        senderIp,
-                        referenceId,
-                        isGroupMessage,
-                        isSystemMessage,
-                        targetId);
+        Mono<MessageAndRecipientIds> saveMono;
+        if (auth) {
+            saveMono = referenceId == null
+                    ? authAndSaveMessage(send,
+                            persist,
+                            messageId,
+                            senderId,
+                            senderIp,
+                            targetId,
+                            isGroupMessage,
+                            isSystemMessage,
+                            text,
+                            records,
+                            burnAfter,
+                            deliveryDate,
+                            null,
+                            preMessageId)
+                    : authAndCloneAndSaveMessage(send,
+                            senderId,
+                            senderIp,
+                            referenceId,
+                            isGroupMessage,
+                            isSystemMessage,
+                            targetId);
+        } else {
+            saveMono = referenceId == null
+                    ? saveMessage(send,
+                            persist,
+                            messageId,
+                            senderId,
+                            senderIp,
+                            targetId,
+                            isGroupMessage,
+                            isSystemMessage,
+                            text,
+                            records,
+                            burnAfter,
+                            deliveryDate,
+                            null,
+                            preMessageId)
+                    : cloneAndSaveMessage(send,
+                            senderId,
+                            senderIp,
+                            referenceId,
+                            isGroupMessage,
+                            isSystemMessage,
+                            targetId);
+        }
         return saveMono.doOnNext(pair -> {
             Message message = pair.message();
             sentMessageCounter.increment();
@@ -1446,7 +1583,7 @@ public class MessageService {
         } else {
             excludedUserSessionIds = Collections.emptySet();
         }
-        return outboundMessageService
+        return outboundMessageManager
                 .forwardNotification(notification, recipientIds, excludedUserSessionIds)
                 // TODO: Should trigger extension points
                 // https://github.com/turms-im/turms/issues/1189
@@ -1467,40 +1604,13 @@ public class MessageService {
                         null,
                         message.getSenderId(),
                         null,
+                        null,
                         message.getTargetId(),
                         null,
                         null,
                         null,
                         null,
                         null));
-    }
-
-    /**
-     * TODO: rename
-     */
-    private Mono<UpdateResult> updateMessageRecallDate(
-            @Nullable Long senderId,
-            @Nullable DeviceType senderDeviceType,
-            @NotNull Long messageId,
-            @Nullable String text,
-            @Nullable List<byte[]> records,
-            @PastOrPresent Date recallDate) {
-        return isMessageRecallable(messageId).flatMap(permission -> {
-            ResponseStatusCode code = permission.code();
-            if (code != OK) {
-                return Mono.error(ResponseException.get(code, permission.reason()));
-            }
-            return updateMessage(senderId,
-                    senderDeviceType,
-                    messageId,
-                    null,
-                    text,
-                    records,
-                    null,
-                    recallDate,
-                    null,
-                    null);
-        });
     }
 
     private void validRecordsLength(@Nullable List<byte[]> records) {
@@ -1524,38 +1634,115 @@ public class MessageService {
 
     // Sequence ID
 
-    public Mono<Void> deleteSequenceIds(boolean isGroupConversation, Set<Long> targetIds) {
+    public Mono<Long> deleteGroupMessageSequenceIds(Set<Long> groupIds) {
         if (redisClientManager == null) {
-            return Mono.empty();
+            return PublisherPool.LONG_ZERO;
         }
-        return redisClientManager.execute(targetIds, (client, keyList) -> {
-            List<ByteBuf> keys = new ArrayList<>(keyList.size());
-            for (Long targetId : keyList) {
-                byte[] prefix = isGroupConversation
-                        ? GROUP_CONVERSATION_SEQUENCE_ID_PREFIX
-                        : PRIVATE_CONVERSATION_SEQUENCE_ID_PREFIX;
-                ByteBuf buffer =
-                        PooledByteBufAllocator.DEFAULT.directBuffer(prefix.length + Long.BYTES)
-                                .writeBytes(prefix)
-                                .writeLong(targetId);
-                keys.add(buffer);
+        Flux<Long> execute = redisClientManager.execute(groupIds, (client, keyList) -> {
+            ByteBuf[] keys = new ByteBuf[keyList.size()];
+            int i = 0;
+            try {
+                for (Long groupId : keyList) {
+                    ByteBuf buffer = PooledByteBufAllocator.DEFAULT.directBuffer(Long.BYTES);
+                    keys[i++] = buffer;
+                    buffer.writeLong(groupId);
+                }
+            } catch (Exception e) {
+                ReferenceCountUtil.ensureReleased(keys);
+                return Mono.error(e);
             }
-            return client.del(keys);
-        })
-                .then();
+            return client.hdel(RedisEntryIdConst.KEY_GROUP_MESSAGE_SEQUENCE_ID_BUFFER,
+                    (Object[]) keys);
+        });
+        return MathFlux.sumLong(execute);
     }
 
-    private Mono<Long> fetchSequenceId(boolean isGroupConversation, Long targetId) {
+    /**
+     * Note that if there is an user1, when the sequence ID-related data of their last related user
+     * is deleted, the sequence ID-related data of user1 in Redis will be deleted automatically (the
+     * behavior is expected to save memory), which indicate that calling this method with user1 is
+     * unnecessary, and will return 0 instead of 1.
+     */
+    public Mono<Long> deletePrivateMessageSequenceIds(Set<Long> userIds) {
+        if (redisClientManager == null) {
+            return PublisherPool.LONG_ZERO;
+        }
+        Flux<Long> flux = Mono.fromCallable(() -> {
+            ByteBuf[] keys = new ByteBuf[userIds.size()];
+            int i = 0;
+            try {
+                for (Long userId : userIds) {
+                    ByteBuf buffer = PooledByteBufAllocator.DEFAULT.directBuffer(Long.BYTES);
+                    keys[i++] = buffer;
+                    buffer.writeLong(userId);
+                }
+            } catch (Exception e) {
+                ReferenceCountUtil.ensureReleased(keys);
+                throw e;
+            }
+            return keys;
+        })
+                .flatMapMany(keys -> redisClientManager.execute(client -> {
+                    ReferenceCountUtil.retain(keys);
+                    return client.eval(deletePrivateMessageSequenceIdScript, keys)
+                            .doFinally(signalType -> ReferenceCountUtil.release(keys));
+                })
+                        .doFinally(signalType -> ReferenceCountUtil.release(keys)));
+        return MathFlux.sumLong(flux);
+    }
+
+    /**
+     * @implNote If the client application detects that the sequence ID goes backward, it should
+     *           delete the existent cache for the sequence ID, and cache and use the new sequence
+     *           ID so that the client application can still work fine.
+     *           <p>
+     *           This is an expected behavior for client applications to suffer from data loss in
+     *           Redis due to any reason.
+     */
+    @VisibleForTesting
+    public Mono<Long> fetchGroupMessageSequenceId(Long groupId) {
         if (redisClientManager == null) {
             return Mono.empty();
         }
-        byte[] prefix = isGroupConversation
-                ? GROUP_CONVERSATION_SEQUENCE_ID_PREFIX
-                : PRIVATE_CONVERSATION_SEQUENCE_ID_PREFIX;
-        ByteBuf keyBuffer = PooledByteBufAllocator.DEFAULT.directBuffer(prefix.length + Long.BYTES)
-                .writeBytes(prefix)
-                .writeLong(targetId);
-        return redisClientManager.incr(targetId, keyBuffer);
+        ByteBuf buffer = PooledByteBufAllocator.DEFAULT.directBuffer(Long.BYTES);
+        try {
+            buffer.writeLong(groupId);
+        } catch (Exception e) {
+            buffer.release();
+            return Mono.error(e);
+        }
+        return redisClientManager
+                .hincr(groupId, RedisEntryIdConst.KEY_GROUP_MESSAGE_SEQUENCE_ID_BUFFER, buffer);
+    }
+
+    @VisibleForTesting
+    public Mono<Long> fetchPrivateMessageSequenceId(Long userId1, Long userId2) {
+        if (redisClientManager == null) {
+            return Mono.empty();
+        }
+        ByteBuf key1 = null;
+        ByteBuf key2 = null;
+        try {
+            key1 = PooledByteBufAllocator.DEFAULT.directBuffer(Long.BYTES);
+            key2 = PooledByteBufAllocator.DEFAULT.directBuffer(Long.BYTES);
+            if (userId1 < userId2) {
+                key1 = key1.writeLong(userId1);
+                key2 = key2.writeLong(userId2);
+            } else {
+                key1 = key1.writeLong(userId2);
+                key2 = key2.writeLong(userId1);
+            }
+        } catch (Exception e) {
+            if (key1 != null) {
+                key1.release();
+            }
+            if (key2 != null) {
+                key2.release();
+            }
+            return Mono.error(e);
+        }
+        return redisClientManager
+                .eval(userId1 ^ userId2, getPrivateMessageSequenceIdScript, key1, key2);
     }
 
     // conversation ID

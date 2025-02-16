@@ -23,6 +23,7 @@ import java.net.InetSocketAddress;
 import java.nio.channels.DatagramChannel;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.NoSuchElementException;
 import jakarta.annotation.Nullable;
 
 import io.netty.handler.codec.http.HttpStatusClass;
@@ -33,6 +34,7 @@ import reactor.netty.http.client.HttpClient;
 import im.turms.server.common.infra.net.InetAddressUtil;
 import im.turms.server.common.infra.property.TurmsPropertiesManager;
 import im.turms.server.common.infra.property.env.common.IpProperties;
+import im.turms.server.common.infra.time.DateTimeUtil;
 
 /**
  * @author James Chen
@@ -41,13 +43,17 @@ import im.turms.server.common.infra.property.env.common.IpProperties;
 @Component
 public class IpDetector {
 
+    private static final Mono<String> EXCEPTION_NO_AVAILABLE_ADDRESS_FOUND =
+            Mono.error(new NoAvailableAddressFoundException(
+                    "Failed to detect the public IP of the local node because there is no available IP"));
+
     private final TurmsPropertiesManager propertiesManager;
     @Nullable
     private String cachedPrivateIp;
-    private long privateIpLastUpdatedDate;
+    private long privateIpLastUpdatedTimeNanos;
     @Nullable
     private String cachedPublicIp;
-    private long publicIpLastUpdatedDate;
+    private long publicIpLastUpdatedTimeNanos;
 
     public IpDetector(TurmsPropertiesManager propertiesManager) {
         this.propertiesManager = propertiesManager;
@@ -60,8 +66,8 @@ public class IpDetector {
         String localCachedPrivateIp = cachedPrivateIp;
         if (cachedPrivateIpExpireAfterMillis > 0
                 && localCachedPrivateIp != null
-                && System.currentTimeMillis()
-                        - privateIpLastUpdatedDate < cachedPrivateIpExpireAfterMillis) {
+                && System.nanoTime() - privateIpLastUpdatedTimeNanos < DateTimeUtil
+                        .millisToNanos(cachedPrivateIpExpireAfterMillis)) {
             return localCachedPrivateIp;
         }
         DatagramChannel channel = null;
@@ -78,7 +84,7 @@ public class IpDetector {
                                 + ip
                                 + ") is not a site local IP address");
             }
-            privateIpLastUpdatedDate = System.currentTimeMillis();
+            privateIpLastUpdatedTimeNanos = System.nanoTime();
             cachedPrivateIp = ip;
             return ip;
         } catch (Exception e) {
@@ -100,8 +106,8 @@ public class IpDetector {
         String localCachedPublicIp = cachedPublicIp;
         if (cachedPublicIpExpireAfterMillis > 0
                 && localCachedPublicIp != null
-                && System.currentTimeMillis()
-                        - publicIpLastUpdatedDate < cachedPublicIpExpireAfterMillis) {
+                && System.nanoTime() - publicIpLastUpdatedTimeNanos < DateTimeUtil
+                        .millisToNanos(cachedPublicIpExpireAfterMillis)) {
             return Mono.just(localCachedPublicIp);
         }
         List<String> ipDetectorAddresses = ipProperties.getPublicIpDetectorAddresses();
@@ -120,7 +126,7 @@ public class IpDetector {
                                     ? body.asString()
                                             .flatMap(ip -> {
                                                 ip = ip.trim();
-                                                return InetAddressUtil.isInetAddress(ip)
+                                                return InetAddressUtil.isIp(ip)
                                                         ? Mono.just(ip)
                                                         : Mono.empty();
                                             })
@@ -129,12 +135,18 @@ public class IpDetector {
         }
         return Mono.firstWithValue(monos)
                 .doOnNext(ip -> {
-                    publicIpLastUpdatedDate = System.currentTimeMillis();
+                    publicIpLastUpdatedTimeNanos = System.nanoTime();
                     cachedPublicIp = ip;
                 })
-                .onErrorMap(t -> new NoAvailableAddressFoundException(
-                        "Failed to detect the public IP of the local node because there is no available IP",
-                        t));
+                .switchIfEmpty(EXCEPTION_NO_AVAILABLE_ADDRESS_FOUND)
+                .onErrorResume(t -> {
+                    if (t instanceof NoSuchElementException) {
+                        return EXCEPTION_NO_AVAILABLE_ADDRESS_FOUND;
+                    }
+                    return Mono.error(new RuntimeException(
+                            "Failed to detect the public IP of the local node",
+                            t));
+                });
     }
 
 }

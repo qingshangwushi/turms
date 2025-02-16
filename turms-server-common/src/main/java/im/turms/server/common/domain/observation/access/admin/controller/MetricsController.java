@@ -18,8 +18,6 @@
 package im.turms.server.common.domain.observation.access.admin.controller;
 
 import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -30,11 +28,10 @@ import java.util.stream.Collectors;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
-import io.micrometer.prometheus.PrometheusMeterRegistry;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufOutputStream;
 import io.netty.buffer.PooledByteBufAllocator;
-import io.prometheus.client.exporter.common.TextFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.springframework.util.CollectionUtils;
 
@@ -61,6 +58,8 @@ import static im.turms.server.common.infra.unit.ByteSizeUnit.KB;
 @RestController("metrics")
 public class MetricsController {
 
+    private static final String APPLICATION_OPENMETRICS_TEXT = "application/openmetrics-text";
+
     private final MetricsPool pool;
     private final PrometheusMeterRegistry prometheusMeterRegistry;
 
@@ -70,7 +69,7 @@ public class MetricsController {
         pool = new MetricsPool(registry);
         prometheusMeterRegistry = (PrometheusMeterRegistry) registry.getRegistries()
                 .stream()
-                .filter(register -> register instanceof PrometheusMeterRegistry)
+                .filter(PrometheusMeterRegistry.class::isInstance)
                 .findFirst()
                 .get();
     }
@@ -87,14 +86,13 @@ public class MetricsController {
                 throw ResponseException.get(ResponseStatusCode.ILLEGAL_ARGUMENT,
                         "Names must not be empty if tags are not empty");
             }
-            Collection<List<Meter>> metersList;
-            metersList = pool.findAllMeters()
+            Collection<List<Meter>> metersList = pool.findAllMeters()
                     .stream()
                     .collect(Collectors.groupingBy(meter -> meter.getId()
                             .getName()))
                     .values();
             List<MetricDTO> list = metersList.stream()
-                    .map(meters -> meters2Dto(meters.get(0)
+                    .map(meters -> meters2Dto(meters.getFirst()
                             .getId()
                             .getName(), meters, returnDescription, returnAvailableTags))
                     .collect(CollectorUtil.toList(metersList.size()));
@@ -131,8 +129,8 @@ public class MetricsController {
     @Schema(implementation = String.class)
     public ByteBuf scrape(@QueryParam(required = false) Set<String> names) throws IOException {
         ByteBuf buffer = PooledByteBufAllocator.DEFAULT.directBuffer(expectedPrometheusDataSize);
-        Writer writer = new OutputStreamWriter(new ByteBufOutputStream(buffer));
-        prometheusMeterRegistry.scrape(writer, TextFormat.CONTENT_TYPE_OPENMETRICS_100, names);
+        ByteBufOutputStream outputStream = new ByteBufOutputStream(buffer);
+        prometheusMeterRegistry.scrape(outputStream, APPLICATION_OPENMETRICS_TEXT, names);
         int actualLength = buffer.readableBytes();
         if (actualLength > expectedPrometheusDataSize) {
             expectedPrometheusDataSize = actualLength + 100;

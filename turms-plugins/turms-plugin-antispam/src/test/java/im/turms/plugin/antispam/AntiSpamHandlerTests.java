@@ -27,7 +27,8 @@ import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
-import im.turms.plugin.antispam.ac.Store;
+import im.turms.plugin.antispam.core.SpamDetector;
+import im.turms.plugin.antispam.core.ac.Store;
 import im.turms.plugin.antispam.property.AntiSpamProperties;
 import im.turms.plugin.antispam.property.TextParsingStrategy;
 import im.turms.plugin.antispam.property.UnwantedWordHandleStrategy;
@@ -60,7 +61,7 @@ class AntiSpamHandlerTests {
         TurmsRequest.Builder builder = TurmsRequest.newBuilder()
                 .setCreateGroupRequest(CreateGroupRequest.newBuilder()
                         .setName(new String(
-                                Store.UNWANTED_WORDS.get(0)
+                                Store.UNWANTED_WORDS.getFirst()
                                         .getWord()))
                         .build());
         ClientRequest clientRequest =
@@ -79,7 +80,7 @@ class AntiSpamHandlerTests {
                 .setCreateGroupJoinQuestionsRequest(CreateGroupJoinQuestionsRequest.newBuilder()
                         .addQuestions(GroupJoinQuestion.newBuilder()
                                 .setQuestion(new String(
-                                        Store.UNWANTED_WORDS.get(0)
+                                        Store.UNWANTED_WORDS.getFirst()
                                                 .getWord()))
                                 .build())
                         .build());
